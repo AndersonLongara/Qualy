@@ -11,6 +11,7 @@ import { generateWhatsAppAgentPrompt, incrementPrompt } from './generateSystemPr
 import { generateMockData } from './generateMockData';
 import { AGENT_TEMPLATES } from '../config/agentTemplates';
 import { executeTool, getBuiltinToolsConfig, BUILTIN_TOOL_KEYS } from '../core/ai/tools';
+import { executionStore } from './executionStore';
 
 const router = Router();
 router.use(requireAdminKey);
@@ -62,6 +63,35 @@ router.post('/tenants', async (req: Request, res: Response) => {
         if (err?.name === 'TenantNotFoundError') return res.status(404).json({ error: err.message });
         console.error('[admin] create tenant:', err);
         return res.status(400).json({ error: err?.message || 'Erro ao criar tenant.' });
+    }
+});
+
+/** GET /api/admin/conversations — lista sessões (conversas) por tenant — só admin, para histórico e debug. */
+router.get('/conversations', async (req: Request, res: Response) => {
+    const tenantId = (req.query.tenantId as string)?.trim() || (req.headers['x-tenant-id'] as string)?.trim() || 'default';
+    const limit = Math.min(200, Math.max(1, parseInt(String(req.query.limit), 10) || 50));
+    const offset = Math.max(0, parseInt(String(req.query.offset), 10) || 0);
+    try {
+        const result = await executionStore.listSessions({ tenantId, limit, offset });
+        return res.json(result);
+    } catch (err: any) {
+        console.error('[admin] list conversations:', err);
+        return res.status(500).json({ error: err?.message || 'Erro ao listar conversas.' });
+    }
+});
+
+/** GET /api/admin/conversations/by-session — mensagens de uma sessão (tenantId + phone) — só admin. */
+router.get('/conversations/by-session', async (req: Request, res: Response) => {
+    const tenantId = (req.query.tenantId as string)?.trim() || (req.headers['x-tenant-id'] as string)?.trim() || 'default';
+    const phone = (req.query.phone as string)?.trim();
+    if (!phone) return res.status(400).json({ error: 'phone é obrigatório (query).', code: 'MISSING_PHONE' });
+    const limit = Math.min(200, Math.max(1, parseInt(String(req.query.limit), 10) || 100));
+    try {
+        const result = await executionStore.listBySession({ tenantId, phone, limit });
+        return res.json(result);
+    } catch (err: any) {
+        console.error('[admin] get conversation:', err);
+        return res.status(500).json({ error: err?.message || 'Erro ao obter conversa.' });
     }
 });
 

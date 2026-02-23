@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, MoreVertical, Search, Paperclip, Smile, Mic, Check, CheckCheck, Moon, Sun, ArrowLeft } from 'lucide-react';
+import { Send, MoreVertical, Search, Paperclip, Smile, Mic, Check, CheckCheck, Moon, Sun, ArrowLeft, MessageCirclePlus } from 'lucide-react';
 import axios from 'axios';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -78,6 +78,10 @@ const themes = {
 const API_PORT = import.meta.env.VITE_API_PORT || '3001';
 const CHAT_API_BASE = import.meta.env.VITE_CHAT_API_URL || `http://localhost:${API_PORT}`;
 
+const STORAGE_SESSION_ID = 'qualy_session_id';
+const storageChatKey = (tenantId: string, sessionId: string) => `qualy_chat_${tenantId}_${sessionId}`;
+const storageAgentKey = (tenantId: string, sessionId: string) => `qualy_agent_${tenantId}_${sessionId}`;
+
 const MessageIcon = () => (
     <svg viewBox="0 0 24 24" height="20" width="20" fill="currentColor">
         <path d="M19.005,3.175H4.674C3.642,3.175,3,3.789,3,4.821V21.02l3.544-3.514h12.461c1.033,0,2.064-1.06,2.064-2.093V4.821C21.068,3.789,20.037,3.175,19.005,3.175z" />
@@ -97,7 +101,13 @@ export default function ChatPage({ assistantId }: ChatPageProps = {}) {
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
     const [isTyping, setIsTyping] = useState(false);
-    const [sessionId] = useState(() => Math.random().toString(36).substring(2, 8).toUpperCase());
+    const [sessionId, setSessionId] = useState(() => {
+        const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_SESSION_ID) : null;
+        if (stored) return stored;
+        const id = Math.random().toString(36).substring(2, 8).toUpperCase();
+        if (typeof localStorage !== 'undefined') localStorage.setItem(STORAGE_SESSION_ID, id);
+        return id;
+    });
     /** Agente ativo: pode mudar via handoff durante o atendimento. */
     const [activeAgentId, setActiveAgentId] = useState<string | undefined>(assistantId);
     const { isDark, toggleTheme } = useTheme();
@@ -108,6 +118,48 @@ export default function ChatPage({ assistantId }: ChatPageProps = {}) {
     useEffect(() => {
         setActiveAgentId(assistantId);
     }, [assistantId]);
+
+    // Persistência: carregar histórico e agente ativo ao montar (tenantId + sessionId)
+    useEffect(() => {
+        const tid = tenantId || 'default';
+        const chatKey = storageChatKey(tid, sessionId);
+        const agentKey = storageAgentKey(tid, sessionId);
+        try {
+            const savedChat = localStorage.getItem(chatKey);
+            if (savedChat) {
+                const parsed = JSON.parse(savedChat) as Message[];
+                if (Array.isArray(parsed) && parsed.length > 0) setMessages(parsed);
+            }
+            const savedAgent = localStorage.getItem(agentKey);
+            if (savedAgent?.trim()) setActiveAgentId(savedAgent.trim());
+        } catch {
+            /* ignore */
+        }
+    }, [tenantId, sessionId]);
+
+    // Persistência: salvar mensagens sempre que mudarem
+    useEffect(() => {
+        const tid = tenantId || 'default';
+        const chatKey = storageChatKey(tid, sessionId);
+        try {
+            if (messages.length > 0) localStorage.setItem(chatKey, JSON.stringify(messages));
+            else localStorage.removeItem(chatKey);
+        } catch {
+            /* ignore */
+        }
+    }, [tenantId, sessionId, messages]);
+
+    // Persistência: salvar agente ativo quando mudar
+    useEffect(() => {
+        const tid = tenantId || 'default';
+        const agentKey = storageAgentKey(tid, sessionId);
+        try {
+            if (activeAgentId?.trim()) localStorage.setItem(agentKey, activeAgentId.trim());
+            else localStorage.removeItem(agentKey);
+        } catch {
+            /* ignore */
+        }
+    }, [tenantId, sessionId, activeAgentId]);
 
     useEffect(() => {
         const headers: Record<string, string> = { 'X-Tenant-Id': tenantId || 'default' };
@@ -126,6 +178,14 @@ export default function ChatPage({ assistantId }: ChatPageProps = {}) {
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, isTyping]);
+
+    const startNewConversation = () => {
+        const newId = Math.random().toString(36).substring(2, 8).toUpperCase();
+        if (typeof localStorage !== 'undefined') localStorage.setItem(STORAGE_SESSION_ID, newId);
+        setSessionId(newId);
+        setMessages([]);
+        setActiveAgentId(assistantId);
+    };
 
     const handleSend = async () => {
         if (!input.trim()) return;
@@ -284,7 +344,16 @@ export default function ChatPage({ assistantId }: ChatPageProps = {}) {
                                 {isTyping ? <span className="text-xs text-emerald-500 font-medium">digitando...</span> : <span className={cn('text-xs', t.subText)}>Online para Negócios</span>}
                             </div>
                         </div>
-                        <div className={cn('flex gap-4', t.iconColor)}>
+                        <div className={cn('flex items-center gap-2', t.iconColor)}>
+                            <button
+                                type="button"
+                                onClick={startNewConversation}
+                                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+                                title="Nova conversa (zerar e começar do zero)"
+                            >
+                                <MessageCirclePlus size={18} />
+                                <span className="hidden sm:inline">Nova conversa</span>
+                            </button>
                             <button className="md:hidden hover:opacity-70 transition-opacity" onClick={toggleTheme}>
                                 {isDark ? <Sun size={20} /> : <Moon size={20} />}
                             </button>

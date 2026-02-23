@@ -41,6 +41,18 @@ function createOpenAIClient(tenantId?: string, assistantName?: string | null) {
     });
 }
 
+/** Corrige glitches onde o modelo insere caracteres de outros idiomas (ex.: 確認 no meio de "confirmarmos"). */
+function sanitizeResponseForPortuguese(text: string): string {
+    if (!text || typeof text !== 'string') return text;
+    let out = text
+        .replace(/\u78ba\u8a8d/g, 'confirmar')
+        .replace(/\u786e\u8ba4/g, 'confirmar')
+        .replace(/\u30ab\u30a6\u30f3\u30c8/g, 'contar')
+        .replace(/\u30c1\u30a7\u30c3\u30af/g, 'verificar');
+    out = out.replace(/[\u3000-\u303f\u4e00-\u9faf\u3400-\u4dbf\uff00-\uffef\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/g, '');
+    return out.replace(/\s{2,}/g, ' ').trim();
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // System Prompt — por config (C3/C6): path → string → fallback SYSTEM_PROMPT.md
 // ─────────────────────────────────────────────────────────────────────────────
@@ -164,6 +176,7 @@ function getSystemPromptFromAssistant(assistant: ResolvedAssistant, tenantConfig
     const assistantName = assistant.name || 'Assistente';
     const strictPrefix = `# IDENTIDADE E REGRAS OBRIGATÓRIAS
 Você é ${assistantName}, assistente da ${companyName}. Siga estritamente as instruções e o tom definidos abaixo. Não invente informações que não estejam nas instruções.
+- **Idioma:** Responda SEMPRE exclusivamente em português do Brasil. Não use palavras, caracteres, ideogramas ou símbolos de outros idiomas (nada de inglês, japonês, chinês, etc. no meio do texto).
 
 ---
 `;
@@ -336,6 +349,7 @@ export const getAIResponse = async (tenantId: string, userMessage: string, histo
         }
 
         let finalContent = (message?.content && typeof message.content === 'string') ? message.content.trim() || null : null;
+        if (finalContent) finalContent = sanitizeResponseForPortuguese(finalContent);
 
         // Resposta truncada por limite de tokens
         if (choice?.finish_reason === 'length' && finalContent) {
@@ -370,7 +384,7 @@ export const getAIResponse = async (tenantId: string, userMessage: string, histo
                 if (!finalContent) {
                     // Em transferência: usar mensagem de transição em vez de fallback genérico
                     if (pendingHandoff?.transitionMessage?.trim()) {
-                        finalContent = pendingHandoff.transitionMessage.trim();
+                        finalContent = sanitizeResponseForPortuguese(pendingHandoff.transitionMessage.trim());
                     } else {
                         const errorDump = {
                             finish_reason: choice?.finish_reason,
@@ -388,7 +402,7 @@ export const getAIResponse = async (tenantId: string, userMessage: string, histo
                 }
             } else {
                 // Em transferência: não mostrar "não consegui processar" — usar mensagem de transição
-                finalContent = (pendingHandoff?.transitionMessage?.trim()) || fallbackMessage;
+                finalContent = (pendingHandoff?.transitionMessage?.trim() ? sanitizeResponseForPortuguese(pendingHandoff.transitionMessage.trim()) : null) || fallbackMessage;
             }
         }
 

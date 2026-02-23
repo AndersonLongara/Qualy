@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, ilike, sql } from 'drizzle-orm';
 import { getDb, isDbEnabled } from '../client';
 import { executions } from '../schema';
-import type { Execution, ExecutionInput, ListBySessionOptions, ListOptions, ListResult } from '../../mock/executionStore';
+import type { Execution, ExecutionInput, ListBySessionOptions, ListOptions, ListResult, SessionSummary, ListSessionsResult } from '../../mock/executionStore';
 
 export async function addExecution(input: ExecutionInput): Promise<Execution | null> {
     if (!isDbEnabled()) return null;
@@ -148,4 +148,53 @@ export async function getExecutionById(id: string, tenantId?: string): Promise<E
         model: r.model ?? null,
         temperature: r.temperature ?? null,
     };
+}
+
+const SESSION_PREVIEW_LEN = 80;
+
+export interface ListSessionsOptions {
+    tenantId: string;
+    limit?: number;
+    offset?: number;
+}
+
+export async function listSessions(options: ListSessionsOptions): Promise<ListSessionsResult | null> {
+    if (!isDbEnabled()) return null;
+    const db = getDb();
+    const tenantId = (options.tenantId ?? '').trim() || 'default';
+    const limit = Math.min(200, Math.max(1, options.limit ?? 50));
+    const offset = Math.max(0, options.offset ?? 0);
+
+    const allForTenant = await db
+        .select({
+            phone: executions.phone,
+            timestamp: executions.timestamp,
+            reply: executions.reply,
+        })
+        .from(executions)
+        .where(eq(executions.tenantId, tenantId))
+        .orderBy(desc(executions.timestamp))
+        .limit(3000);
+
+    const byPhone = new Map<string, { lastMessageAt: Date; messageCount: number; lastPreview: string }>();
+    for (const row of allForTenant) {
+        const key = row.phone;
+        if (!byPhone.has(key)) {
+            byPhone.set(key, {
+                lastMessageAt: row.timestamp instanceof Date ? row.timestamp : new Date(row.timestamp),
+                messageCount: 0,
+                lastPreview: row.reply?.length > SESSION_PREVIEW_LEN ? row.reply.slice(0, SESSION_PREVIEW_LEN) + '…' : (row.reply ?? ''),
+            });
+        }
+        const ent = byPhone.get(key)!;
+        ent.messageCount += 1;
+    }
+
+    const sorted = Array.from(byPhone.entries())
+        .map(([phone, v]) => ({ phone, lastMessageAt: v.lastMessageAt.toISOString(), messageCount: v.messageCount, lastPreview: v.lastPreview }))
+        .sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt));
+    const total = sorted.length;
+    const items = sorted.slice(offset, offset + limit);
+
+    return { items, total };
 }

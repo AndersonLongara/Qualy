@@ -3,10 +3,11 @@
  */
 import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, MessageCircle, ListOrdered, BarChart3, Settings, Save, Loader2, Sparkles, Link2, Copy, Check, ExternalLink, PlusCircle, X, GitBranch, Trash2, Plus, Wrench } from 'lucide-react';
+import { ArrowLeft, MessageCircle, ListOrdered, BarChart3, Settings, Save, Loader2, Sparkles, Link2, Copy, Check, ExternalLink, PlusCircle, X, GitBranch, Trash2, Plus, Wrench, History } from 'lucide-react';
 import { useTenant } from '../../context/TenantContext';
 import ChatPage from '../ChatPage';
 import ExecutionsPage from '../ExecutionsPage';
+import ChatHistoryTab from './ChatHistoryTab';
 import axios from 'axios';
 import { getAdminHeaders } from '../admin/AdminKeyPage';
 import DataIntegrationSection, {
@@ -895,7 +896,8 @@ export default function AgentDetailPage() {
     const { companyId, agentId } = useParams<{ companyId: string; agentId: string }>();
     const [searchParams] = useSearchParams();
     const { setTenantId } = useTenant();
-    const [tab, setTab] = useState<'config' | 'chat' | 'executions' | 'webhook' | 'consumo' | 'links' | 'routing'>('config');
+    const [tab, setTab] = useState<'config' | 'chat' | 'historico' | 'executions' | 'webhook' | 'consumo' | 'links' | 'routing'>('config');
+    const [chatKey, setChatKey] = useState(0);
 
     useEffect(() => {
         const t = searchParams.get('tab');
@@ -955,6 +957,17 @@ export default function AgentDetailPage() {
                 >
                     <MessageCircle size={18} />
                     Chat (preview)
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setTab('historico')}
+                    className={cn(
+                        'flex items-center gap-2 px-3 py-2 rounded-t-md text-sm font-medium transition-colors',
+                        tab === 'historico' ? 'bg-[#00a884]/10 text-[#00a884]' : 'text-[#54656f] dark:text-[#aebac1] hover:bg-black/5 dark:hover:bg-white/5'
+                    )}
+                >
+                    <History size={18} />
+                    Histórico
                 </button>
                 <button
                     type="button"
@@ -1020,8 +1033,20 @@ export default function AgentDetailPage() {
             )}
             {tab === 'chat' && (
                 <div className="w-full h-[calc(100vh-11rem)] min-h-[500px] rounded-xl border border-[#e9edef] dark:border-[#2a3942] overflow-hidden bg-white dark:bg-[#202c33] flex flex-col">
-                    <ChatPage assistantId={agentId} />
+                    <ChatPage key={chatKey} assistantId={agentId} />
                 </div>
+            )}
+            {tab === 'historico' && (
+                <ChatHistoryTab
+                    companyId={companyId}
+                    tenantId={companyId}
+                    onNewConversation={() => {
+                        const newId = Math.random().toString(36).substring(2, 8).toUpperCase();
+                        if (typeof localStorage !== 'undefined') localStorage.setItem('qualy_session_id', newId);
+                        setChatKey((k) => k + 1);
+                        setTab('chat');
+                    }}
+                />
             )}
             {tab === 'executions' && (
                 <div className="rounded-xl border border-[#e9edef] dark:border-[#2a3942] overflow-hidden bg-white dark:bg-[#202c33]">

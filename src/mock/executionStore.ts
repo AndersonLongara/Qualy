@@ -3,7 +3,7 @@
  * - Primário: Postgres (quando POSTGRES_URL estiver configurada)
  * - Fallback: memória (dev/local)
  */
-import { addExecution, getExecutionById, listExecutions, listExecutionsBySession } from '../db/repositories/executionRepository';
+import { addExecution, getExecutionById, listExecutions, listExecutionsBySession, listSessions as listSessionsFromDb } from '../db/repositories/executionRepository';
 
 const MAX_ITEMS = 500;
 
@@ -48,6 +48,25 @@ export interface ListBySessionOptions {
 
 export interface ListResult {
     items: Execution[];
+    total: number;
+}
+
+/** Resumo de uma sessão (conversa) para listagem — só admin. */
+export interface SessionSummary {
+    phone: string;
+    lastMessageAt: string;
+    messageCount: number;
+    lastPreview: string;
+}
+
+export interface ListSessionsOptions {
+    tenantId: string;
+    limit?: number;
+    offset?: number;
+}
+
+export interface ListSessionsResult {
+    items: SessionSummary[];
     total: number;
 }
 
@@ -145,7 +164,38 @@ function createStore() {
         return { items: slice, total: filtered.length };
     }
 
-    return { add, list, getById, listBySession };
+    async function listSessions(options: ListSessionsOptions): Promise<ListSessionsResult> {
+        const persisted = await listSessionsFromDb(options);
+        if (persisted) return persisted;
+
+        const tenantId = (options.tenantId ?? '').trim() || 'default';
+        const limit = Math.min(Math.max(1, options.limit ?? 50), 200);
+        const offset = Math.max(0, options.offset ?? 0);
+        const byPhone = new Map<string, { lastMessageAt: string; messageCount: number; lastPreview: string }>();
+        for (const e of items.filter(x => x.tenantId === tenantId)) {
+            const key = e.phone;
+            if (!byPhone.has(key)) {
+                byPhone.set(key, {
+                    lastMessageAt: e.timestamp,
+                    messageCount: 0,
+                    lastPreview: e.reply.length > TRUNCATE_LEN ? e.reply.slice(0, TRUNCATE_LEN) + '…' : e.reply,
+                });
+            }
+            const ent = byPhone.get(key)!;
+            ent.messageCount += 1;
+            if (e.timestamp > ent.lastMessageAt) {
+                ent.lastMessageAt = e.timestamp;
+                ent.lastPreview = e.reply.length > TRUNCATE_LEN ? e.reply.slice(0, TRUNCATE_LEN) + '…' : e.reply;
+            }
+        }
+        const sorted = Array.from(byPhone.entries())
+            .map(([phone, v]) => ({ phone, lastMessageAt: v.lastMessageAt, messageCount: v.messageCount, lastPreview: v.lastPreview }))
+            .sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt));
+        const total = sorted.length;
+        return { items: sorted.slice(offset, offset + limit), total };
+    }
+
+    return { add, list, getById, listBySession, listSessions };
 }
 
 const store = createStore();
@@ -155,4 +205,5 @@ export const executionStore = {
     list: store.list,
     getById: store.getById,
     listBySession: store.listBySession,
+    listSessions: store.listSessions,
 };
