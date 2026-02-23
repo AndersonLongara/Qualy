@@ -1033,7 +1033,7 @@ export default function AgentDetailPage() {
             )}
             {tab === 'chat' && (
                 <div className="w-full h-[calc(100vh-11rem)] min-h-[500px] rounded-xl border border-[#e9edef] dark:border-[#2a3942] overflow-hidden bg-white dark:bg-[#202c33] flex flex-col">
-                    <ChatPage key={chatKey} assistantId={agentId} />
+                    <ChatPage key={chatKey} assistantId={agentId} showConversationList />
                 </div>
             )}
             {tab === 'historico' && (

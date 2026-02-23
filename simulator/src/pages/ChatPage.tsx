@@ -5,6 +5,7 @@ import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { useTenant } from '../context/TenantContext';
 import { useTheme } from '../context/ThemeContext';
+import { getAdminHeaders } from './admin/AdminKeyPage';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
@@ -88,9 +89,11 @@ const MessageIcon = () => (
     </svg>
 );
 
-type ChatPageProps = { assistantId?: string };
+type SessionSummary = { phone: string; lastMessageAt: string; messageCount: number; lastPreview: string };
 
-export default function ChatPage({ assistantId }: ChatPageProps = {}) {
+type ChatPageProps = { assistantId?: string; /** No preview do admin: mostra lista de conversas na sidebar (incluindo a anterior ao criar nova). */ showConversationList?: boolean };
+
+export default function ChatPage({ assistantId, showConversationList = false }: ChatPageProps = {}) {
     const { tenantId } = useTenant();
     const [config, setConfig] = useState<{ assistantName: string; companyName: string; greeting: string }>({
         assistantName: 'AltraIA',
@@ -110,6 +113,7 @@ export default function ChatPage({ assistantId }: ChatPageProps = {}) {
     });
     /** Agente ativo: pode mudar via handoff durante o atendimento. */
     const [activeAgentId, setActiveAgentId] = useState<string | undefined>(assistantId);
+    const [conversationList, setConversationList] = useState<SessionSummary[]>([]);
     const { isDark, toggleTheme } = useTheme();
 
     const t = isDark ? themes.dark : themes.light;
@@ -179,12 +183,27 @@ export default function ChatPage({ assistantId }: ChatPageProps = {}) {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, isTyping]);
 
+    const fetchConversationList = () => {
+        if (!showConversationList) return;
+        const tid = tenantId || 'default';
+        const params = new URLSearchParams({ tenantId: tid, limit: '50' });
+        axios
+            .get<{ items: SessionSummary[] }>(`${CHAT_API_BASE}/api/admin/conversations?${params}`, { headers: getAdminHeaders() })
+            .then((res) => setConversationList(res.data.items ?? []))
+            .catch(() => setConversationList([]));
+    };
+
+    useEffect(() => {
+        fetchConversationList();
+    }, [showConversationList, tenantId]);
+
     const startNewConversation = () => {
         const newId = Math.random().toString(36).substring(2, 8).toUpperCase();
         if (typeof localStorage !== 'undefined') localStorage.setItem(STORAGE_SESSION_ID, newId);
         setSessionId(newId);
         setMessages([]);
         setActiveAgentId(assistantId);
+        if (showConversationList) setTimeout(fetchConversationList, 300);
     };
 
     const handleSend = async () => {
@@ -315,15 +334,36 @@ export default function ChatPage({ assistantId }: ChatPageProps = {}) {
                                 </p>
                             </div>
                         </div>
-                        {[1, 2, 3].map((i) => (
-                            <div key={i} className="flex items-center px-3 py-3 cursor-pointer opacity-40">
-                                <div className={cn('w-[49px] h-[49px] rounded-full mr-3', t.skeletonBlock)} />
-                                <div className={cn('flex-1 border-b pb-3 flex flex-col gap-2 justify-center', t.sidebarBorder)}>
-                                    <div className={cn('w-32 h-4 rounded', t.skeletonBlock)} />
-                                    <div className={cn('w-48 h-3 rounded', t.skeletonAlt)} />
+                        {showConversationList
+                            ? conversationList
+                                .filter((s) => s.phone !== sessionId)
+                                .map((s) => (
+                                    <button
+                                        key={s.phone}
+                                        type="button"
+                                        onClick={() => setSessionId(s.phone)}
+                                        className={cn('w-full flex items-center px-3 py-3 text-left border-b transition-colors hover:bg-black/5 dark:hover:bg-white/5', t.sidebarBorder)}
+                                    >
+                                        <div className={cn('w-[49px] h-[49px] rounded-full bg-emerald-600/80 flex items-center justify-center text-white font-bold text-sm mr-3 flex-shrink-0')}>Q</div>
+                                        <div className="flex-1 min-w-0 flex flex-col justify-center">
+                                            <div className="flex items-center gap-2">
+                                                <span className={cn('text-[10px] font-mono text-[#00a884] dark:text-[#2dd4bf]')}>{s.phone}</span>
+                                                <span className={cn('text-xs', t.smallText)}>{s.messageCount} msgs</span>
+                                            </div>
+                                            <p className={cn('text-[14px] truncate', t.subText)}>{s.lastPreview || '—'}</p>
+                                            <span className={cn('text-[11px]', t.smallText)}>{new Date(s.lastMessageAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                                        </div>
+                                    </button>
+                                ))
+                            : [1, 2, 3].map((i) => (
+                                <div key={i} className="flex items-center px-3 py-3 cursor-pointer opacity-40">
+                                    <div className={cn('w-[49px] h-[49px] rounded-full mr-3', t.skeletonBlock)} />
+                                    <div className={cn('flex-1 border-b pb-3 flex flex-col gap-2 justify-center', t.sidebarBorder)}>
+                                        <div className={cn('w-32 h-4 rounded', t.skeletonBlock)} />
+                                        <div className={cn('w-48 h-3 rounded', t.skeletonAlt)} />
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            ))}
                     </div>
                 </div>
                 <div className={cn('flex-1 flex flex-col h-full relative transition-colors duration-300', t.chatBg)}>
