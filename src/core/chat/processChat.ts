@@ -39,6 +39,26 @@ function replyLooksLikeTransfer(reply: string): boolean {
     return hasTransferVerb && (hasTarget || r.length > 30);
 }
 
+/** Última mensagem do assistente no histórico pediu confirmação de transferência? (ex.: "Pode ser?") */
+function lastAssistantAskedTransferConfirmation(history: Array<{ role: string; content?: string }>): boolean {
+    for (let i = history.length - 1; i >= 0; i--) {
+        if (history[i].role === 'assistant') {
+            const c = (history[i].content || '').trim().toLowerCase();
+            return /\b(pode ser\??|posso (te )?(encaminhar|transferir)\??|aguardo (sua )?confirmação|quer que eu transfira|posso transferir|confirma\??)\b/i.test(c) ||
+                (/\b(transferir|encaminhar)\b/i.test(c) && c.length < 120);
+        }
+    }
+    return false;
+}
+
+/** Mensagem do usuário é confirmação curta (sim, pode, ok, claro)? */
+function userMessageIsConfirmation(message: string): boolean {
+    const m = (message || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    if (m.length > 40) return false;
+    return /^(sim|pode|pode ser|ok|claro|com certeza|pode sim|pode ser sim|tudo bem|blz|beleza|pode ir|pode transferir|quero|aceito)$/i.test(m) ||
+        /^sim[,!.]?\s*$/i.test(m) || /^ok[,!.]?\s*$/i.test(m);
+}
+
 /**
  * Processa uma mensagem do usuário e retorna a resposta do assistente.
  * Atualiza a sessão no store (histórico, order state, lastProduct). Sessão isolada por tenant e por assistente (tenantId:assistantId:phone).
@@ -159,6 +179,15 @@ export async function processChatMessage(
             const route = matched ?? routes[0];
             handoffToReturn = { targetAgentId: route.agentId, transitionMessage: reply };
             console.log(`[CHAT] HANDOFF (fallback): agente "${effectiveAssistantId}" → "${route.agentId}" (resposta indicou transferência sem tool)`);
+        }
+        if (!handoffToReturn && reply === fallbackReply && hasHandoffRoutes && userMessageIsConfirmation(message) && lastAssistantAskedTransferConfirmation(session.history)) {
+            // Fallback: usuário confirmou ("sim"/"pode") e a última mensagem do bot pediu confirmação de transferência, mas a IA não chamou a tool
+            const routes = assistant.handoffRules!.routes!;
+            const route = routes.find((r) => /vendedor|vendas|comercial/i.test(r.agentId || '') || /vendedor|vendas|comercial/i.test(r.label || '')) ?? routes[0];
+            const transitionMessage = `Vou te encaminhar para nosso setor de vendas. Um momento!`;
+            handoffToReturn = { targetAgentId: route.agentId, transitionMessage };
+            reply = transitionMessage;
+            console.log(`[CHAT] HANDOFF (fallback confirmação): usuário confirmou, agente "${effectiveAssistantId}" → "${route.agentId}"`);
         }
         if (handoffToReturn) {
             await currentAgentStore.set(tid, phone, handoffToReturn.targetAgentId);
