@@ -1,0 +1,17 @@
+{
+  "branding": {
+    "companyName": "Minha Empresa",
+    "assistantName": "Assistente",
+    "productName": "Produto"
+  },
+  "api": {
+    "baseUrl": "https://api.seudominio.com.br"
+  },
+  "prompt": {
+    "systemPromptPath": "config/prompts/meu-cliente.md"
+  },
+  "features": {
+    "orderFlowEnabled": true,
+    "financialEnabled": true
+  }
+}

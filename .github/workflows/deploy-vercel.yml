@@ -1,0 +1,39 @@
+name: Deploy Vercel
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_SCOPE: ${{ secrets.VERCEL_SCOPE }}
+      VERCEL_PROJECT_NAME: qualy-altraia
+      POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Bootstrap Vercel integrations/stores
+        run: npm run vercel:bootstrap:storage
+
+      - name: Run SQL migrations
+        run: npm run db:migrate
+
+      - name: Migrate tenants/agentes JSON -> DB
+        run: npm run db:migrate:json
+
+      - name: Deploy production (non-interactive)
+        run: npm run vercel:deploy:ci

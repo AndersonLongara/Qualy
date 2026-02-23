@@ -1,0 +1,38 @@
+{
+  "name": "altraflow",
+  "scripts": {
+    "start": "ts-node src/mock/server.ts",
+    "dev": "ts-node src/mock/server.ts",
+    "build": "tsc",
+    "db:migrate": "node scripts/db-migrate.js",
+    "db:migrate:json": "ts-node scripts/migrate-json-to-db.ts",
+    "vercel:bootstrap:storage": "node scripts/vercel-bootstrap-storage.js",
+    "vercel:deploy:ci": "node scripts/vercel-deploy-ci.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^22.7.9",
+    "@types/supertest": "^6.0.3",
+    "drizzle-kit": "^0.31.9",
+    "jest": "^30.2.0",
+    "supertest": "^7.2.2",
+    "ts-jest": "^29.4.6",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@vercel/kv": "^3.0.0",
+    "axios": "^1.7.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "drizzle-orm": "^0.45.1",
+    "express": "^4.21.1",
+    "openai": "^4.68.1",
+    "postgres": "^3.4.8"
+  }
+}

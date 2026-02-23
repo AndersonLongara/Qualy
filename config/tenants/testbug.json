@@ -1,0 +1,55 @@
+{
+  "branding": {
+    "companyName": "TestBug",
+    "assistantName": "TestAgent"
+  },
+  "api": {
+    "baseUrl": "http://localhost:3001"
+  },
+  "prompt": {
+    "systemPromptPath": null,
+    "systemPrompt": null,
+    "greeting": null,
+    "humanAgentMessage": null,
+    "temperature": 0.3
+  },
+  "features": {
+    "orderFlowEnabled": true,
+    "financialEnabled": true
+  },
+  "assistants": [
+    {
+      "id": "vendedor",
+      "name": "Vendedor",
+      "systemPromptPath": null,
+      "systemPrompt": "Voc� � um vendedor.",
+      "model": null,
+      "temperature": 0.3,
+      "api": null,
+      "features": null,
+      "handoffRules": null
+    },
+    {
+      "id": "suporte",
+      "name": "Suporte",
+      "systemPromptPath": null,
+      "systemPrompt": "Você é suporte.",
+      "model": null,
+      "temperature": 0.3,
+      "api": null,
+      "features": null,
+      "handoffRules": null
+    },
+    {
+      "id": "suporte2",
+      "name": "Suporte",
+      "systemPromptPath": null,
+      "systemPrompt": "Suporte.",
+      "model": null,
+      "temperature": 0.3,
+      "api": null,
+      "features": null,
+      "handoffRules": null
+    }
+  ]
+}

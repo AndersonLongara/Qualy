@@ -1,0 +1,27 @@
+{
+  "branding": {
+    "companyName": "teste",
+    "assistantName": "teste",
+    "productName": ""
+  },
+  "api": {
+    "baseUrl": "http://localhost:3001"
+  },
+  "prompt": {
+    "systemPromptPath": null,
+    "systemPrompt": null
+  },
+  "features": {
+    "orderFlowEnabled": true,
+    "financialEnabled": true
+  },
+  "assistants": [
+    {
+      "id": "teste",
+      "name": "teste",
+      "systemPromptPath": null,
+      "systemPrompt": "teste sdr teste",
+      "model": "openai/gpt-4o-mini"
+    }
+  ]
+}

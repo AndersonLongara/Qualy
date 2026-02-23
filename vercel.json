@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "buildCommand": "npm install && cd simulator && npm install && npm run build",
+  "outputDirectory": "simulator/dist",
+  "installCommand": "npm install",
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api" },
+    { "source": "/v1/(.*)", "destination": "/api" },
+    { "source": "/webhook/(.*)", "destination": "/api" }
+  ],
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 30
+    }
+  }
+}

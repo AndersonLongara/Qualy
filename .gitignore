@@ -1,0 +1,12 @@
+.vercel
+node_modules
+.env
+.env.local
+.env*.local
+dist
+*.log
+error_dump.json
+.DS_Store
+debug-*.json
+debug-*.txt
+test-output*.txt
