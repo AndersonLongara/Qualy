@@ -157,7 +157,7 @@ export function buildHandoffToolDefinition(routes: HandoffRoute[]) {
         type: 'function',
         function: {
             name: 'transferir_para_agente',
-            description: `Transfere o atendimento para outro agente. Chame esta ferramenta SOMENTE após o cliente ter confirmado que aceita a transferência (ex.: respondeu "sim", "pode", "ok", "claro"). NUNCA chame na mesma mensagem em que você pergunta "Pode ser?" ou "Posso te encaminhar?" — primeiro aguarde a confirmação do usuário. Agentes disponíveis: ${descriptions}. Preencha agente e mensagem_transicao.`,
+            description: `Transfere o atendimento para outro agente. Antes de transferir: NÃO pergunte sobre produtos, itens ou como fazer o pedido — apenas ofereça a transferência e pergunte "Pode ser?". Chame esta ferramenta SOMENTE após o cliente confirmar (sim, pode, ok, claro). NUNCA chame na mesma mensagem em que pergunta "Pode ser?" — aguarde a confirmação. Agentes: ${descriptions}. Preencha agente e mensagem_transicao.`,
             parameters: {
                 type: 'object',
                 properties: {
