@@ -351,6 +351,10 @@ export const getAIResponse = async (tenantId: string, userMessage: string, histo
         }
 
         let finalContent = (message?.content && typeof message.content === 'string') ? message.content.trim() || null : null;
+        // Nunca enviar ao usuário o prompt interno de handoff (evitar vazamento do JSON injetado para o modelo)
+        if (pendingHandoff && finalContent && (finalContent.includes('transfer_initiated') || finalContent.includes('Gere agora a mensagem'))) {
+            finalContent = null;
+        }
         if (finalContent) finalContent = sanitizeResponseForPortuguese(finalContent);
 
         // Resposta truncada por limite de tokens
@@ -384,7 +388,10 @@ export const getAIResponse = async (tenantId: string, userMessage: string, histo
                     } catch (_) { /* não é JSON de produtos */ }
                 }
                 if (!finalContent && typeof lastToolContent === 'string' && lastToolContent.trim().length > 0) {
-                    finalContent = lastToolContent.trim();
+                    const trimmed = lastToolContent.trim();
+                    if (!trimmed.includes('transfer_initiated') && !trimmed.includes('Gere agora a mensagem')) {
+                        finalContent = trimmed;
+                    }
                 }
                 if (!finalContent) {
                     // Em transferência: usar mensagem de transição em vez de fallback genérico
