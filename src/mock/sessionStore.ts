@@ -95,3 +95,50 @@ export function createRedisSessionStore(ttlSeconds: number = 60 * 60 * 24): Sess
 
 /** Store singleton usado pelo servidor. */
 export const sessionStore = isRedisConfigured() ? createRedisSessionStore() : createMemorySessionStore();
+
+// ─── Agente atual por (tenantId, phone): após handoff, as próximas mensagens usam esse agente
+const CURRENT_AGENT_KEY_PREFIX = 'current_agent:';
+const currentAgentMemory: Record<string, string> = {};
+
+function currentAgentKey(tenantId: string, phone: string): string {
+    return `${CURRENT_AGENT_KEY_PREFIX}${tenantId || 'default'}:${phone}`;
+}
+
+export const currentAgentStore = {
+    async get(tenantId: string, phone: string): Promise<string | null> {
+        const key = currentAgentKey(tenantId, phone);
+        if (isRedisConfigured()) {
+            try {
+                const v = await kv.get<string>(key);
+                return typeof v === 'string' && v.trim() ? v.trim() : null;
+            } catch {
+                return currentAgentMemory[key]?.trim() ?? null;
+            }
+        }
+        return currentAgentMemory[key]?.trim() ?? null;
+    },
+    async set(tenantId: string, phone: string, agentId: string): Promise<void> {
+        const key = currentAgentKey(tenantId, phone);
+        const value = (agentId || '').trim();
+        if (!value) return;
+        currentAgentMemory[key] = value;
+        if (isRedisConfigured()) {
+            try {
+                await kv.set(key, value, { ex: 60 * 60 * 24 }); // 24h
+            } catch {
+                /* keep memory */
+            }
+        }
+    },
+    async clear(tenantId: string, phone: string): Promise<void> {
+        const key = currentAgentKey(tenantId, phone);
+        delete currentAgentMemory[key];
+        if (isRedisConfigured()) {
+            try {
+                await kv.del(key);
+            } catch {
+                /* ignore */
+            }
+        },
+    },
+};

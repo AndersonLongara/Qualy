@@ -374,13 +374,16 @@ export const getAIResponse = async (tenantId: string, userMessage: string, histo
                             const p = products[0];
                             const nome = p.nome || 'Produto';
                             const sku = p.sku || '';
-                            const preco = p.preco_promocional ?? p.preco_unitario;
+                            const preco = p.preco_promocional ?? p.preco_unitario ?? p.preco_tabela;
                             const disp = p.estoque_disponivel ?? 0;
                             finalContent = `Encontrei **${nome}**${sku ? ` (${sku})` : ''}.\n\n` +
                                 `Preço: R$ ${Number(preco).toFixed(2)}${p.preco_promocional != null ? ' (promocional)' : ''}\n` +
                                 `Estoque disponível: ${disp} unidades.\n\nDeseja fazer o pedido?`;
                         }
                     } catch (_) { /* não é JSON de produtos */ }
+                }
+                if (!finalContent && typeof lastToolContent === 'string' && lastToolContent.trim().length > 0) {
+                    finalContent = lastToolContent.trim();
                 }
                 if (!finalContent) {
                     // Em transferência: usar mensagem de transição em vez de fallback genérico

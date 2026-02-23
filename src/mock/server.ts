@@ -341,6 +341,7 @@ export const ESTOQUE = [
     // Agregados
     { sku: 'PROD-005', nome: 'Cal Hidratada CH III 20kg', categoria: 'Cal', unidade: 'SC', estoque_disponivel: 300, preco_tabela: 18.00, preco_promocional: null, imagem_url: 'https://example.com/img/cal.jpg' },
     { sku: 'PROD-006', nome: 'Areia Média Lavada (m³)', categoria: 'Agregado', unidade: 'M3', estoque_disponivel: 200, preco_tabela: 85.00, preco_promocional: null, imagem_url: 'https://example.com/img/areia.jpg' },
+    { sku: 'ARE-002', nome: 'Areia Grossa Saca 30kg', categoria: 'Agregado', unidade: 'SC', estoque_disponivel: 120, preco_tabela: 18.50, preco_promocional: null, imagem_url: 'https://example.com/img/areia-grossa.jpg' },
     { sku: 'PROD-007', nome: 'Brita 1 (m³)', categoria: 'Agregado', unidade: 'M3', estoque_disponivel: 150, preco_tabela: 120.00, preco_promocional: null, imagem_url: 'https://example.com/img/brita.jpg' },
 ];
 
@@ -443,12 +444,13 @@ app.post('/api/chat', async (req: Request, res: Response) => {
     const startTime = Date.now();
     try {
         await ensureTenantLoaded(tenantId);
-        const { reply, debug, handoff } = await processChatMessage(tenantId, phone, message, frontendHistory, assistantId);
+        const { reply, debug, handoff, effectiveAssistantId } = await processChatMessage(tenantId, phone, message, frontendHistory, assistantId);
         const durationMs = Date.now() - startTime;
+        const effectiveId = effectiveAssistantId ?? assistantId;
         let model: string | null = null;
         let temperature: number | null = null;
         try {
-            const assistant = getAssistantConfig(tenantId, assistantId);
+            const assistant = getAssistantConfig(tenantId, effectiveId);
             model = (assistant.model && assistant.model.trim()) || null;
             temperature = typeof assistant.temperature === 'number' && !Number.isNaN(assistant.temperature)
                 ? assistant.temperature
@@ -461,7 +463,7 @@ app.post('/api/chat', async (req: Request, res: Response) => {
             : debug;
         await executionStore.add({
             tenantId,
-            assistantId: assistantId ?? null,
+            assistantId: effectiveId ?? null,
             phone,
             message,
             reply,
@@ -472,7 +474,7 @@ app.post('/api/chat', async (req: Request, res: Response) => {
             model,
             temperature,
         });
-        res.json({ reply, debug, handoff: handoff ?? null });
+        res.json({ reply, debug, handoff: handoff ?? null, effectiveAssistantId: effectiveId ?? null });
     } catch (error: any) {
         if (error?.name === 'TenantNotFoundError') {
             return res.status(404).json({ error: 'Tenant não encontrado', code: 'TENANT_NOT_FOUND' });
@@ -595,12 +597,13 @@ async function handleWebhookMessage(req: Request, res: Response, tenantId: strin
     const startTime = Date.now();
     try {
         await ensureTenantLoaded(tenantId);
-        const { reply, debug, handoff } = await processChatMessage(tenantId, phone, message, undefined, assistantId);
+        const { reply, debug, handoff, effectiveAssistantId } = await processChatMessage(tenantId, phone, message, undefined, assistantId);
         const durationMs = Date.now() - startTime;
+        const effectiveId = effectiveAssistantId ?? assistantId;
         let model: string | null = null;
         let temperature: number | null = null;
         try {
-            const assistant = getAssistantConfig(tenantId, assistantId);
+            const assistant = getAssistantConfig(tenantId, effectiveId);
             model = (assistant.model && assistant.model.trim()) || null;
             temperature = typeof assistant.temperature === 'number' && !Number.isNaN(assistant.temperature)
                 ? assistant.temperature
@@ -610,7 +613,7 @@ async function handleWebhookMessage(req: Request, res: Response, tenantId: strin
         }
         await executionStore.add({
             tenantId,
-            assistantId: assistantId ?? null,
+            assistantId: effectiveId ?? null,
             phone,
             message,
             reply,

@@ -234,6 +234,9 @@ export default function ChatPage({ assistantId, showConversationList = false }: 
                 { headers }
             );
             const [response] = await Promise.all([apiCall, minDelay]);
+            if (response.data.effectiveAssistantId?.trim() && response.data.effectiveAssistantId !== activeAgentId) {
+                setActiveAgentId(response.data.effectiveAssistantId.trim());
+            }
             if (response.data.debug) {
                 console.info('%c[DEBUG-AI] Histórico Técnico:', 'color: #00a884; font-weight: bold;', response.data.debug);
             }

@@ -7,7 +7,7 @@ import { getConfig, getAssistantConfig } from '../../config/tenant';
 import { detectIntent } from '../ai/intent';
 import { createOrderSession, processOrderFlow } from '../ai/order-flow';
 import { getAIResponse } from '../ai/provider';
-import { sessionStore } from '../../mock/sessionStore';
+import { sessionStore, currentAgentStore } from '../../mock/sessionStore';
 
 export interface HandoffInfo {
     /** ID do agente de destino para onde o cliente foi transferido. */
@@ -23,6 +23,8 @@ export interface ProcessChatResult {
     debug?: any;
     /** Presente quando o agente atual transferiu o atendimento para outro agente. */
     handoff?: HandoffInfo | null;
+    /** ID do agente efetivamente usado (pode ser o persistido após handoff). Para log e sincronia com o cliente. */
+    effectiveAssistantId?: string | null;
 }
 
 const DEFAULT_TENANT = 'default';
@@ -55,14 +57,16 @@ export async function processChatMessage(
     assistantId?: string | null
 ): Promise<ProcessChatResult> {
     const tid = tenantId?.trim() || DEFAULT_TENANT;
-    const session = await sessionStore.get(tid, phone, assistantId);
+    const storedAgent = await currentAgentStore.get(tid, phone);
+    const effectiveAssistantId = (storedAgent && storedAgent.trim()) ? storedAgent.trim() : (assistantId && assistantId.trim()) ? assistantId.trim() : undefined;
+    const session = await sessionStore.get(tid, phone, effectiveAssistantId);
     let intent = detectIntent(message);
     // Garante que pedidos explícitos de transferência sempre vão para a IA (tool transferir_para_agente)
     if (intent === 'HUMAN_AGENT' && /\btransferir\b/i.test(message.trim())) {
         intent = 'UNKNOWN';
     }
     const config = getConfig(tid);
-    const assistant = getAssistantConfig(tid, assistantId);
+    const assistant = getAssistantConfig(tid, effectiveAssistantId);
     const orderFlowEnabled = config.features?.orderFlowEnabled === true;
     // Se o agente tem roteamento ativo (ex.: Atendente → Vendedor), pedidos de compra devem ir para a IA para ela transferir, não para o fluxo de pedido global
     const hasHandoffRoutes = !!(assistant.handoffRules?.enabled && assistant.handoffRules.routes?.length);
@@ -74,6 +78,7 @@ export async function processChatMessage(
         session.history = [];
         session.order = createOrderSession();
         session.lastProduct = null;
+        await currentAgentStore.clear(tid, phone);
     }
 
     console.log(`\n[CHAT] [${phone}] >> "${message}" | Intent: ${intent} | OrderState: ${session.order.state}`);
@@ -111,7 +116,7 @@ export async function processChatMessage(
             reply = 'Olá! Sou a Assistente, assistente virtual. Como posso ajudar hoje?';
         }
     } else {
-        const result = await getAIResponse(tid, message, session.history, assistantId);
+        const result = await getAIResponse(tid, message, session.history, effectiveAssistantId);
         const fallbackReply = 'Desculpe, não consegui processar sua solicitação. Pode reformular?';
         // Em transferência: nunca mostrar fallback genérico; usar mensagem de transição
         if (result.handoff?.transitionMessage?.trim()) {
@@ -153,15 +158,16 @@ export async function processChatMessage(
             });
             const route = matched ?? routes[0];
             handoffToReturn = { targetAgentId: route.agentId, transitionMessage: reply };
-            console.log(`[CHAT] HANDOFF (fallback): agente "${assistantId}" → "${route.agentId}" (resposta indicou transferência sem tool)`);
+            console.log(`[CHAT] HANDOFF (fallback): agente "${effectiveAssistantId}" → "${route.agentId}" (resposta indicou transferência sem tool)`);
         }
         if (handoffToReturn) {
+            await currentAgentStore.set(tid, phone, handoffToReturn.targetAgentId);
             if (!handledByLLM && reply) {
                 session.history.push({ role: 'user', content: message });
                 session.history.push({ role: 'assistant', content: reply });
                 session.history = session.history.slice(-20);
             }
-            await sessionStore.set?.(tid, phone, session, assistantId);
+            await sessionStore.set?.(tid, phone, session, effectiveAssistantId);
 
             // Gera primeira mensagem do agente de destino com contexto da transferência (conversa ativa)
             let initialReply: string | undefined;
@@ -190,6 +196,7 @@ export async function processChatMessage(
                     transitionMessage: handoffToReturn.transitionMessage,
                     ...(initialReply ? { initialReply } : {}),
                 },
+                effectiveAssistantId: effectiveAssistantId ?? null,
             };
         }
     }
@@ -203,6 +210,6 @@ export async function processChatMessage(
     const logPreview = reply.length > 80 ? `${reply.substring(0, 80)} (truncado no log)` : reply;
     console.log(`[CHAT] [${phone}] << "${logPreview}"`);
 
-    await sessionStore.set?.(tid, phone, session, assistantId);
-    return { reply, debug };
+    await sessionStore.set?.(tid, phone, session, effectiveAssistantId);
+    return { reply, debug, effectiveAssistantId: effectiveAssistantId ?? null };
 }
