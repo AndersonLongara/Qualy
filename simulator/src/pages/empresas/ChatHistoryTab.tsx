@@ -86,7 +86,9 @@ export default function ChatHistoryTab({ companyId, tenantId, onNewConversation 
     return (
         <div className="rounded-xl border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#202c33] overflow-hidden flex flex-col min-h-[400px]">
             <div className="flex items-center justify-between p-4 border-b border-[#e9edef] dark:border-[#2a3942]">
-                <h2 className="text-lg font-semibold text-[#111b21] dark:text-[#e9edef]">Histórico de conversas</h2>
+                <h2 className="text-lg font-semibold text-[#111b21] dark:text-[#e9edef]">
+                    Histórico de conversas {!loading && total > 0 && <span className="text-sm font-normal text-[#54656f] dark:text-[#aebac1]">({total})</span>}
+                </h2>
                 <button
                     type="button"
                     onClick={onNewConversation}
