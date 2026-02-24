@@ -419,7 +419,12 @@ app.get('/api/config', async (req: Request, res: Response) => {
         const greeting = template
             .replace(/\{\{assistantName\}\}/g, assistantName)
             .replace(/\{\{companyName\}\}/g, companyName);
-        return res.json({ assistantName, companyName, greeting, webhookUrl, webhookSecretConfigured });
+
+        const entryAgentId = config.chatFlow?.entryAgentId || null;
+        const humanEscalation = config.chatFlow?.humanEscalation || null;
+        const assistants = (config.assistants || []).map((a) => ({ id: a.id, name: a.name }));
+
+        return res.json({ assistantName, companyName, greeting, webhookUrl, webhookSecretConfigured, entryAgentId, humanEscalation, assistants });
     } catch (err: any) {
         if (err?.name === 'TenantNotFoundError') {
             return res.status(404).json({ error: 'Tenant não encontrado', code: 'TENANT_NOT_FOUND' });
@@ -430,6 +435,9 @@ app.get('/api/config', async (req: Request, res: Response) => {
             greeting: 'Olá! Sou a AltraFlow, assistente virtual. Como posso ajudar hoje?',
             webhookUrl,
             webhookSecretConfigured,
+            entryAgentId: null,
+            humanEscalation: null,
+            assistants: [],
         });
     }
 });
@@ -445,7 +453,7 @@ app.post('/api/chat', async (req: Request, res: Response) => {
     const startTime = Date.now();
     try {
         await ensureTenantLoaded(tenantId);
-        const { reply, debug, handoff, effectiveAssistantId } = await processChatMessage(tenantId, phone, message, frontendHistory, assistantId);
+        const { reply, debug, handoff, humanEscalation, effectiveAssistantId } = await processChatMessage(tenantId, phone, message, frontendHistory, assistantId);
         const durationMs = Date.now() - startTime;
         const effectiveId = effectiveAssistantId ?? assistantId;
         let model: string | null = null;
@@ -459,9 +467,11 @@ app.post('/api/chat', async (req: Request, res: Response) => {
         } catch {
             /* ignore */
         }
-        const debugWithHandoff = handoff
-            ? { ...(debug && typeof debug === 'object' && !Array.isArray(debug) ? (debug as Record<string, unknown>) : {}), handoff }
-            : debug;
+        const debugExtra = {
+            ...(debug && typeof debug === 'object' && !Array.isArray(debug) ? (debug as Record<string, unknown>) : {}),
+            ...(handoff ? { handoff } : {}),
+            ...(humanEscalation ? { humanEscalation } : {}),
+        };
         await executionStore.add({
             tenantId,
             assistantId: effectiveId ?? null,
@@ -471,11 +481,11 @@ app.post('/api/chat', async (req: Request, res: Response) => {
             status: 'ok',
             durationMs,
             source: 'api',
-            debug: debugWithHandoff,
+            debug: Object.keys(debugExtra).length > 0 ? debugExtra : debug,
             model,
             temperature,
         });
-        res.json({ reply, debug, handoff: handoff ?? null, effectiveAssistantId: effectiveId ?? null });
+        res.json({ reply, debug, handoff: handoff ?? null, humanEscalation: humanEscalation ?? null, effectiveAssistantId: effectiveId ?? null });
     } catch (error: any) {
         if (error?.name === 'TenantNotFoundError') {
             return res.status(404).json({ error: 'Tenant não encontrado', code: 'TENANT_NOT_FOUND' });

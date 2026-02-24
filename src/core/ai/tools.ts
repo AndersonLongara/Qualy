@@ -130,6 +130,30 @@ export const toolsDefinition = [
 /** Lista de tools built-in (para listagem no admin e seeds). */
 export const BUILTIN_TOOL_KEYS = ['consultar_cliente', 'consultar_titulos', 'consultar_pedidos', 'consultar_estoque'] as const;
 
+/**
+ * Gera a definição da tool de escalação para atendente humano.
+ * Incluída quando chatFlow.humanEscalation.enabled = true.
+ */
+export function buildHumanEscalationToolDefinition() {
+    return {
+        type: 'function',
+        function: {
+            name: 'solicitar_atendente_humano',
+            description: 'Solicita a transferência do atendimento para um atendente humano. Use quando o cliente pedir explicitamente para falar com uma pessoa, ou quando você não conseguir resolver o problema do cliente. Preencha o motivo da escalação.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    motivo: {
+                        type: 'string',
+                        description: 'Breve motivo da escalação (ex.: "cliente solicitou atendente humano", "dúvida não coberta pelo assistente").',
+                    },
+                },
+                required: ['motivo'],
+            },
+        },
+    };
+}
+
 /** Retorna definições ToolConfig das tools built-in (para merge na listagem do tenant). */
 export function getBuiltinToolsConfig(): ToolConfig[] {
     return toolsDefinition
@@ -311,6 +335,12 @@ export const toolsExecution: Record<string, (a: string | Record<string, unknown>
         const mensagem = typeof a.mensagem_transicao === 'string' ? a.mensagem_transicao : 'Transferindo para o próximo agente.';
         // Retorna JSON especial que o provider reconhece como handoff trigger
         return JSON.stringify({ __handoff__: true, targetAgentId: agente, transitionMessage: mensagem });
+    },
+
+    solicitar_atendente_humano: async (_tenantIdOrArgs: string | Record<string, unknown>, _assistantIdOrArgs?: string | Record<string, unknown> | null, args?: Record<string, unknown>) => {
+        const a = typeof _tenantIdOrArgs === 'object' ? _tenantIdOrArgs : (args ?? {});
+        const motivo = typeof a.motivo === 'string' ? a.motivo : 'Solicitação do cliente';
+        return JSON.stringify({ __human_escalation__: true, motivo });
     },
 
     consultar_estoque: async (tenantIdOrArgs: string | Record<string, unknown>, assistantIdOrArgs?: string | Record<string, unknown> | null, args?: Record<string, unknown>) => {

@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Plus, MessageCircle, ChevronRight, ArrowLeft, Settings, Wrench } from 'lucide-react';
+import { Plus, MessageCircle, ChevronRight, ArrowLeft, Settings, Wrench, ExternalLink } from 'lucide-react';
 import { getAdminHeaders, ADMIN_KEY_STORAGE } from '../admin/AdminKeyPage';
 
 const API_BASE = import.meta.env.VITE_CHAT_API_URL || `http://localhost:${import.meta.env.VITE_API_PORT || '3001'}`;
@@ -169,6 +169,27 @@ export default function CompanyAgentsPage() {
 
             {assistants.length === 0 && (
                 <p className="mt-4 text-[#54656f] dark:text-[#aebac1] text-sm">Nenhum agente. Use o card acima para criar o primeiro.</p>
+            )}
+
+            {assistants.length > 0 && (
+                <div className="mt-6 p-4 rounded-lg border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#202c33]">
+                    <h3 className="text-sm font-semibold text-[#111b21] dark:text-[#e9edef] mb-2">Link público do chat</h3>
+                    <p className="text-xs text-[#54656f] dark:text-[#aebac1] mb-2">Compartilhe este link para que clientes testem o chat com o fluxo configurado.</p>
+                    <div className="flex items-center gap-2">
+                        <code className="flex-1 text-sm bg-[#f0f2f5] dark:bg-[#111b21] text-[#111b21] dark:text-[#e9edef] px-3 py-2 rounded-md border border-[#e9edef] dark:border-[#2a3942] truncate">
+                            {`${window.location.origin}/t/${companyId}`}
+                        </code>
+                        <a
+                            href={`/t/${companyId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 px-3 py-2 rounded-md text-sm font-medium text-[#00a884] hover:bg-[#00a884]/10"
+                        >
+                            <ExternalLink size={16} />
+                            Abrir
+                        </a>
+                    </div>
+                </div>
             )}
         </div>
     );

@@ -119,24 +119,13 @@ export default function ChatPage({ assistantId, showConversationList = false }: 
     const t = isDark ? themes.dark : themes.light;
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    // Sincronizar com o agente da página só quando NÃO houver agente salvo para esta conversa (evita sobrescrever vendedor ao abrir conversa transferida)
-    useEffect(() => {
-        const tid = tenantId || 'default';
-        const agentKey = storageAgentKey(tid, sessionId);
-        try {
-            const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(agentKey)?.trim() : null;
-            if (stored) return;
-        } catch {
-            /* ignore */
-        }
-        setActiveAgentId(assistantId);
-    }, [assistantId, tenantId, sessionId]);
-
-    // Persistência: carregar histórico e agente ativo ao trocar sessão (tenantId + sessionId)
+    // Carregar histórico, agente e sincronizar ao trocar sessão
     useEffect(() => {
         const tid = tenantId || 'default';
         const chatKey = storageChatKey(tid, sessionId);
         const agentKey = storageAgentKey(tid, sessionId);
+
+        // 1) Mensagens do localStorage
         try {
             const savedChat = localStorage.getItem(chatKey);
             if (savedChat) {
@@ -145,10 +134,36 @@ export default function ChatPage({ assistantId, showConversationList = false }: 
             } else {
                 setMessages([]);
             }
-            const savedAgent = localStorage.getItem(agentKey);
-            if (savedAgent?.trim()) setActiveAgentId(savedAgent.trim());
         } catch {
             setMessages([]);
+        }
+
+        // 2) Agente: localStorage > API (última execução) > prop
+        let resolved = false;
+        try {
+            const savedAgent = localStorage.getItem(agentKey)?.trim();
+            if (savedAgent) {
+                setActiveAgentId(savedAgent);
+                resolved = true;
+            }
+        } catch { /* ignore */ }
+
+        if (!resolved && showConversationList) {
+            const params = new URLSearchParams({ tenantId: tid, phone: sessionId, limit: '1' });
+            axios
+                .get<{ items: Array<{ assistantId?: string | null }> }>(`${CHAT_API_BASE}/api/admin/conversations/by-session?${params}`, { headers: getAdminHeaders() })
+                .then((res) => {
+                    const last = res.data?.items?.[0];
+                    if (last?.assistantId?.trim()) {
+                        setActiveAgentId(last.assistantId.trim());
+                        try { localStorage.setItem(agentKey, last.assistantId.trim()); } catch { /* ignore */ }
+                    } else {
+                        setActiveAgentId(assistantId);
+                    }
+                })
+                .catch(() => setActiveAgentId(assistantId));
+        } else if (!resolved) {
+            setActiveAgentId(assistantId);
         }
     }, [tenantId, sessionId]);
 
@@ -258,6 +273,18 @@ export default function ChatPage({ assistantId, showConversationList = false }: 
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             };
             setMessages((prev) => [...prev, botMsg]);
+
+            // Escalação humana: exibe notificação especial
+            if (response.data.humanEscalation) {
+                const escalationMsg: Message = {
+                    id: (Date.now() + 2).toString(),
+                    role: 'bot',
+                    text: `Atendimento encaminhado para um atendente humano. Motivo: ${response.data.humanEscalation.motivo || 'solicitação do cliente'}.`,
+                    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    isHandoffNotification: true,
+                };
+                setMessages((prev) => [...prev, escalationMsg]);
+            }
 
             // Handoff: troca o agente ativo, exibe notificação e primeira mensagem do novo agente (com contexto)
             if (response.data.handoff?.targetAgentId) {

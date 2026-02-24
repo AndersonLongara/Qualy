@@ -113,6 +113,25 @@ export interface AssistantConfig {
     toolIds?: string[] | null;
 }
 
+/** Configuração de escalação para atendente humano. */
+export interface HumanEscalationConfig {
+    enabled: boolean;
+    /** Mensagem exibida ao usuário quando a escalação ocorre. */
+    message?: string | null;
+    /** URL do webhook chamado quando o usuário pede humano (ex.: abrir ticket, notificar CRM). */
+    webhookUrl?: string | null;
+    /** Método HTTP do webhook. Padrão: POST. */
+    method?: 'GET' | 'POST';
+}
+
+/** Fluxo do chat: agente inicial e regras de escalação humana. */
+export interface ChatFlowConfig {
+    /** ID do agente que inicia a conversa (deve existir na lista assistants). */
+    entryAgentId: string;
+    /** Regras de escalação para atendente humano. */
+    humanEscalation?: HumanEscalationConfig | null;
+}
+
 export interface TenantConfig {
     branding: {
         companyName: string;
@@ -142,6 +161,8 @@ export interface TenantConfig {
     assistants?: AssistantConfig[];
     /** Lista de tools do tenant (built-in referenciadas ou custom). */
     tools?: ToolConfig[];
+    /** Fluxo do chat: agente de entrada e escalação humana. Se ausente, usa o primeiro assistente ou default. */
+    chatFlow?: ChatFlowConfig | null;
 }
 
 const DEFAULTS: TenantConfig = {
@@ -284,6 +305,27 @@ function normalizeTool(raw: unknown): ToolConfig | null {
     };
 }
 
+function normalizeHumanEscalation(raw: unknown): HumanEscalationConfig | null {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const o = raw as Record<string, unknown>;
+    const enabled = typeof o.enabled === 'boolean' ? o.enabled : false;
+    const message = typeof o.message === 'string' ? o.message.trim() || null : null;
+    const webhookUrl = typeof o.webhookUrl === 'string' ? o.webhookUrl.trim() || null : null;
+    const method = o.method === 'GET' || o.method === 'POST' ? o.method : 'POST';
+    return { enabled, message, webhookUrl, method };
+}
+
+function normalizeChatFlow(raw: unknown): ChatFlowConfig | null {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const o = raw as Record<string, unknown>;
+    const entryAgentId = typeof o.entryAgentId === 'string' ? o.entryAgentId.trim() : '';
+    if (!entryAgentId) return null;
+    return {
+        entryAgentId,
+        humanEscalation: normalizeHumanEscalation(o.humanEscalation),
+    };
+}
+
 function normalizeHandoffRules(raw: unknown): HandoffRules | null {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
     const o = raw as Record<string, unknown>;
@@ -380,6 +422,7 @@ export function mergeWithDefaults(partial: Record<string, unknown>): TenantConfi
         },
         assistants: assistants.length > 0 ? assistants : undefined,
         tools: tools.length > 0 ? tools : undefined,
+        chatFlow: normalizeChatFlow(partial.chatFlow) ?? null,
     };
 }
 
@@ -440,6 +483,7 @@ function freezeConfig(config: TenantConfig): TenantConfig {
         features: Object.freeze({ ...config.features }),
         assistants: config.assistants?.map((a) => Object.freeze({ ...a })),
         tools: config.tools?.map((t) => Object.freeze({ ...t })),
+        chatFlow: config.chatFlow ? Object.freeze({ ...config.chatFlow, humanEscalation: config.chatFlow.humanEscalation ? Object.freeze({ ...config.chatFlow.humanEscalation }) : null }) : null,
     }) as TenantConfig;
 }
 

@@ -3,6 +3,7 @@
  * Usada por POST /api/chat e pelo webhook de mensageria (C13).
  * Multi-tenant (M1): tenantId identifica o cliente; sessão e config são por tenant.
  */
+import axios from 'axios';
 import { getConfig, getAssistantConfig } from '../../config/tenant';
 import { detectIntent } from '../ai/intent';
 import { createOrderSession, processOrderFlow } from '../ai/order-flow';
@@ -18,16 +19,49 @@ export interface HandoffInfo {
     initialReply?: string;
 }
 
+export interface HumanEscalationInfo {
+    /** Motivo da escalação fornecido pela IA. */
+    motivo: string;
+    /** true se o webhook de escalação foi disparado. */
+    webhookFired: boolean;
+}
+
 export interface ProcessChatResult {
     reply: string;
     debug?: any;
     /** Presente quando o agente atual transferiu o atendimento para outro agente. */
     handoff?: HandoffInfo | null;
+    /** Presente quando houve escalação para atendente humano (via intent ou via tool da IA). */
+    humanEscalation?: HumanEscalationInfo | null;
     /** ID do agente efetivamente usado (pode ser o persistido após handoff). Para log e sincronia com o cliente. */
     effectiveAssistantId?: string | null;
 }
 
 const DEFAULT_TENANT = 'default';
+
+/**
+ * Chama o webhook de escalação humana (fire-and-forget).
+ * Envia tenantId, phone, message e timestamp ao endpoint configurado.
+ */
+async function fireHumanEscalationWebhook(
+    webhookUrl: string,
+    method: 'GET' | 'POST',
+    tenantId: string,
+    phone: string,
+    message: string
+): Promise<void> {
+    try {
+        const payload = { tenantId, phone, message, timestamp: new Date().toISOString(), event: 'human_escalation' };
+        if (method === 'GET') {
+            await axios.get(webhookUrl, { params: payload, timeout: 10000 });
+        } else {
+            await axios.post(webhookUrl, payload, { timeout: 10000 });
+        }
+        console.log(`[ESCALATION] Webhook chamado: ${method} ${webhookUrl}`);
+    } catch (err: any) {
+        console.warn(`[ESCALATION] Falha no webhook ${webhookUrl}:`, err?.message);
+    }
+}
 
 /** Indica se o texto da resposta parece uma mensagem de transferência efetiva (não apenas pedido de confirmação). */
 function replyLooksLikeTransfer(reply: string): boolean {
@@ -120,11 +154,28 @@ export async function processChatMessage(
         reply = result.reply;
         session.order = result.newState;
     } else if (intent === 'HUMAN_AGENT') {
-        try {
-            reply = (config.prompt.humanAgentMessage && config.prompt.humanAgentMessage.trim()) || 'Vou transferir você para um de nossos atendentes. Um momento, por favor!';
-        } catch {
-            reply = 'Vou transferir você para um de nossos atendentes. Um momento, por favor!';
+        const escalation = config.chatFlow?.humanEscalation;
+        const legacyMsg = config.prompt.humanAgentMessage?.trim();
+        let webhookFired = false;
+        if (escalation?.enabled) {
+            reply = escalation.message?.trim() || legacyMsg || 'Vou transferir você para um de nossos atendentes. Um momento, por favor!';
+            if (escalation.webhookUrl?.trim()) {
+                fireHumanEscalationWebhook(escalation.webhookUrl.trim(), escalation.method || 'POST', tid, phone, message);
+                webhookFired = true;
+            }
+        } else {
+            reply = legacyMsg || 'Vou transferir você para um de nossos atendentes. Um momento, por favor!';
         }
+        session.history.push({ role: 'user', content: message });
+        session.history.push({ role: 'assistant', content: reply });
+        session.history = session.history.slice(-20);
+        await sessionStore.set?.(tid, phone, session, effectiveAssistantId);
+        return {
+            reply,
+            debug: null,
+            humanEscalation: { motivo: 'Solicitação direta do cliente (intent HUMAN_AGENT)', webhookFired },
+            effectiveAssistantId: effectiveAssistantId ?? null,
+        };
     } else if (intent === 'GREETING') {
         try {
             const assistantName = assistant.name || 'Assistente';
@@ -228,6 +279,28 @@ export async function processChatMessage(
                     ...(initialReply ? { initialReply } : {}),
                 },
                 effectiveAssistantId: targetId,
+            };
+        }
+
+        // Escalação humana via tool da IA
+        if (result.humanEscalation) {
+            const escalation = config.chatFlow?.humanEscalation;
+            let webhookFired = false;
+            if (escalation?.enabled && escalation.webhookUrl?.trim()) {
+                fireHumanEscalationWebhook(escalation.webhookUrl.trim(), escalation.method || 'POST', tid, phone, message);
+                webhookFired = true;
+            }
+            if (!handledByLLM && reply) {
+                session.history.push({ role: 'user', content: message });
+                session.history.push({ role: 'assistant', content: reply });
+                session.history = session.history.slice(-20);
+            }
+            await sessionStore.set?.(tid, phone, session, effectiveAssistantId);
+            return {
+                reply,
+                debug,
+                humanEscalation: { motivo: result.humanEscalation.motivo, webhookFired },
+                effectiveAssistantId: effectiveAssistantId ?? null,
             };
         }
     }

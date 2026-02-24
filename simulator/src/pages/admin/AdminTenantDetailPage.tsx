@@ -38,6 +38,18 @@ type OrderFlowMessages = {
     confirmYesNo?: string | null;
 };
 
+type HumanEscalationConfig = {
+    enabled: boolean;
+    message?: string | null;
+    webhookUrl?: string | null;
+    method?: 'GET' | 'POST';
+};
+
+type ChatFlowConfig = {
+    entryAgentId: string;
+    humanEscalation?: HumanEscalationConfig | null;
+};
+
 type TenantConfig = {
     branding: { companyName: string; assistantName: string; productName?: string };
     api: { baseUrl: string };
@@ -51,6 +63,7 @@ type TenantConfig = {
     };
     features: { orderFlowEnabled: boolean; financialEnabled: boolean };
     assistants?: AssistantConfig[];
+    chatFlow?: ChatFlowConfig | null;
 };
 
 
@@ -77,6 +90,7 @@ export default function AdminTenantDetailPage({ basePath = '/admin' }: Props) {
         },
         features: { orderFlowEnabled: true, financialEnabled: true },
         assistants: [] as AssistantConfig[],
+        chatFlow: null as ChatFlowConfig | null,
     });
     const [loading, setLoading] = useState(!isNew);
     const [saving, setSaving] = useState(false);
@@ -141,6 +155,10 @@ export default function AdminTenantDetailPage({ basePath = '/admin' }: Props) {
                         model: a.model ?? null,
                         temperature: a.temperature ?? null,
                     })) : [],
+                    chatFlow: (c as any).chatFlow && typeof (c as any).chatFlow === 'object' ? {
+                        entryAgentId: (c as any).chatFlow.entryAgentId ?? '',
+                        humanEscalation: (c as any).chatFlow.humanEscalation ?? null,
+                    } : null,
                 });
             })
             .catch((err) => {
@@ -169,6 +187,7 @@ export default function AdminTenantDetailPage({ basePath = '/admin' }: Props) {
             prompt: form.prompt,
             features: form.features,
             assistants: form.assistants.filter((a) => a.id.trim() && a.name.trim()),
+            chatFlow: form.chatFlow?.entryAgentId?.trim() ? form.chatFlow : null,
         };
         try {
             if (isNew) {
@@ -310,6 +329,121 @@ export default function AdminTenantDetailPage({ basePath = '/admin' }: Props) {
                                 />
                             </div>
                         ))}
+                    </div>
+                )}
+
+                {!isNew && (
+                    <div className="space-y-3 rounded-lg border border-[#e9edef] dark:border-[#2a3942] p-4">
+                        <h3 className="text-sm font-semibold text-[#111b21] dark:text-[#e9edef]">Fluxo do Chat</h3>
+                        <p className="text-xs text-[#54656f] dark:text-[#aebac1]">
+                            Define o agente inicial do chat e as regras de escalação para atendente humano. O link público <code className="bg-black/10 dark:bg-white/10 px-1 rounded">/t/{id}</code> usará essas configurações.
+                        </p>
+
+                        <div>
+                            <label className={labelCls}>Agente de entrada (entryAgentId)</label>
+                            {form.assistants.length > 0 ? (
+                                <select
+                                    value={form.chatFlow?.entryAgentId ?? ''}
+                                    onChange={(e) => setForm((f) => ({
+                                        ...f,
+                                        chatFlow: { ...(f.chatFlow || { entryAgentId: '' }), entryAgentId: e.target.value },
+                                    }))}
+                                    className={inputCls}
+                                >
+                                    <option value="">— Nenhum (usa padrão) —</option>
+                                    {form.assistants.filter((a) => a.id.trim()).map((a) => (
+                                        <option key={a.id} value={a.id}>{a.name || a.id}</option>
+                                    ))}
+                                </select>
+                            ) : (
+                                <p className="text-xs text-[#54656f] dark:text-[#aebac1]">Nenhum agente cadastrado. Crie agentes primeiro.</p>
+                            )}
+                        </div>
+
+                        <div className="space-y-2 pt-2 border-t border-[#e9edef] dark:border-[#2a3942]">
+                            <label className="flex items-center gap-2">
+                                <input
+                                    type="checkbox"
+                                    checked={form.chatFlow?.humanEscalation?.enabled ?? false}
+                                    onChange={(e) => setForm((f) => ({
+                                        ...f,
+                                        chatFlow: {
+                                            ...(f.chatFlow || { entryAgentId: '' }),
+                                            humanEscalation: {
+                                                ...(f.chatFlow?.humanEscalation || { enabled: false }),
+                                                enabled: e.target.checked,
+                                            },
+                                        },
+                                    }))}
+                                    className="accent-[#00a884]"
+                                />
+                                <span className="text-sm text-[#111b21] dark:text-[#e9edef]">Habilitar escalação para atendente humano</span>
+                            </label>
+
+                            {form.chatFlow?.humanEscalation?.enabled && (
+                                <>
+                                    <div>
+                                        <label className={labelCls}>Mensagem ao cliente (escalação)</label>
+                                        <input
+                                            type="text"
+                                            value={form.chatFlow?.humanEscalation?.message ?? ''}
+                                            onChange={(e) => setForm((f) => ({
+                                                ...f,
+                                                chatFlow: {
+                                                    ...(f.chatFlow || { entryAgentId: '' }),
+                                                    humanEscalation: {
+                                                        ...(f.chatFlow?.humanEscalation || { enabled: true }),
+                                                        message: e.target.value || null,
+                                                    },
+                                                },
+                                            }))}
+                                            className={inputCls}
+                                            placeholder="Vou transferir você para um de nossos atendentes..."
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className={labelCls}>Webhook URL (opcional)</label>
+                                        <input
+                                            type="url"
+                                            value={form.chatFlow?.humanEscalation?.webhookUrl ?? ''}
+                                            onChange={(e) => setForm((f) => ({
+                                                ...f,
+                                                chatFlow: {
+                                                    ...(f.chatFlow || { entryAgentId: '' }),
+                                                    humanEscalation: {
+                                                        ...(f.chatFlow?.humanEscalation || { enabled: true }),
+                                                        webhookUrl: e.target.value || null,
+                                                    },
+                                                },
+                                            }))}
+                                            className={inputCls}
+                                            placeholder="https://seu-crm.com/webhook/escalacao"
+                                        />
+                                        <p className="text-xs text-[#54656f] dark:text-[#aebac1] mt-1">Será chamado quando o cliente pedir atendente humano. Recebe: tenantId, phone, message, timestamp.</p>
+                                    </div>
+                                    <div>
+                                        <label className={labelCls}>Método HTTP do webhook</label>
+                                        <select
+                                            value={form.chatFlow?.humanEscalation?.method ?? 'POST'}
+                                            onChange={(e) => setForm((f) => ({
+                                                ...f,
+                                                chatFlow: {
+                                                    ...(f.chatFlow || { entryAgentId: '' }),
+                                                    humanEscalation: {
+                                                        ...(f.chatFlow?.humanEscalation || { enabled: true }),
+                                                        method: e.target.value as 'GET' | 'POST',
+                                                    },
+                                                },
+                                            }))}
+                                            className={inputCls}
+                                        >
+                                            <option value="POST">POST</option>
+                                            <option value="GET">GET</option>
+                                        </select>
+                                    </div>
+                                </>
+                            )}
+                        </div>
                     </div>
                 )}
 

@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { getConfig, getAssistantConfig, type ResolvedAssistant, type ToolConfig } from '../../config/tenant';
 import { usageStore } from '../../mock/usageStore';
-import { toolsDefinition, toolsExecution, buildHandoffToolDefinition, getBuiltinToolsConfig, executeTool } from './tools';
+import { toolsDefinition, toolsExecution, buildHandoffToolDefinition, buildHumanEscalationToolDefinition, getBuiltinToolsConfig, executeTool } from './tools';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -115,6 +115,8 @@ function getEffectiveTools(
 ): EffectiveToolsResult {
     const executionMap: Record<string, (args: Record<string, unknown>) => Promise<string>> = {};
 
+    const humanEscalationEnabled = tenantConfig.chatFlow?.humanEscalation?.enabled === true;
+
     if (assistant.toolIds && assistant.toolIds.length > 0) {
         const builtins = getBuiltinToolsConfig();
         const custom = tenantConfig.tools || [];
@@ -131,6 +133,11 @@ function getEffectiveTools(
             executionMap['transferir_para_agente'] = (args) =>
                 toolsExecution['transferir_para_agente'](tenantId, assistantId, args);
         }
+        if (humanEscalationEnabled) {
+            definitions.push(buildHumanEscalationToolDefinition());
+            executionMap['solicitar_atendente_humano'] = (args) =>
+                toolsExecution['solicitar_atendente_humano'](tenantId, assistantId, args);
+        }
         return { definitions, executionMap };
     }
 
@@ -145,6 +152,9 @@ function getEffectiveTools(
     });
     if (assistant.handoffRules?.enabled && assistant.handoffRules.routes.length > 0) {
         base.push(buildHandoffToolDefinition(assistant.handoffRules.routes));
+    }
+    if (humanEscalationEnabled) {
+        base.push(buildHumanEscalationToolDefinition());
     }
     for (const t of base) {
         const name = (t as any).function?.name as string;
@@ -220,6 +230,7 @@ export const getAIResponse = async (tenantId: string, userMessage: string, histo
             messages: history,
             toolResults: [],
             handoff: null,
+            humanEscalation: null,
         };
     }
 
@@ -271,6 +282,7 @@ export const getAIResponse = async (tenantId: string, userMessage: string, histo
         // Loop de Execução de Tools (max 5 iterações)
         let turns = 0;
         let pendingHandoff: { targetAgentId: string; transitionMessage: string } | null = null;
+        let pendingHumanEscalation: { motivo: string } | null = null;
 
         while (message.tool_calls && message.tool_calls.length > 0 && turns < 5) {
             turns++;
@@ -315,13 +327,27 @@ export const getAIResponse = async (tenantId: string, userMessage: string, histo
                                 transitionMessage: parsed.transitionMessage,
                             };
                             console.log(`[AI] ← HANDOFF detectado → agente: ${parsed.targetAgentId}`);
-                            // Injeta resposta positiva para que o LLM gere a mensagem de transição
                             toolOutput = JSON.stringify({
                                 status: 'transfer_initiated',
                                 message: `Transferência para o agente "${parsed.targetAgentId}" iniciada. Gere agora a mensagem de despedida e transição para o cliente.`,
                             });
                         }
                     } catch { /* não é JSON de handoff */ }
+                }
+
+                // Detecta sinal de escalação humana
+                if (functionName === 'solicitar_atendente_humano') {
+                    try {
+                        const parsed = JSON.parse(toolOutput);
+                        if (parsed.__human_escalation__) {
+                            pendingHumanEscalation = { motivo: parsed.motivo || 'Solicitação do cliente' };
+                            console.log(`[AI] ← HUMAN ESCALATION detectada — motivo: ${parsed.motivo}`);
+                            toolOutput = JSON.stringify({
+                                status: 'escalation_initiated',
+                                message: 'Escalação para atendente humano registrada. Informe ao cliente que um atendente humano entrará em contato.',
+                            });
+                        }
+                    } catch { /* não é JSON de escalação */ }
                 }
 
                 console.log(`[AI] ← ${functionName}:`, String(toolOutput).substring(0, 200));
@@ -431,6 +457,7 @@ export const getAIResponse = async (tenantId: string, userMessage: string, histo
             messages: messages,
             toolResults: messages.filter(m => m.role === 'tool'),
             handoff: pendingHandoff ?? null,
+            humanEscalation: pendingHumanEscalation ?? null,
         };
 
     } catch (error: any) {
@@ -452,6 +479,7 @@ export const getAIResponse = async (tenantId: string, userMessage: string, histo
             messages: history,
             toolResults: [],
             handoff: null,
+            humanEscalation: null,
         };
     }
 };
