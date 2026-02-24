@@ -105,8 +105,30 @@ const extractDocument = (text: string): string | null => {
     return null;
 };
 
-/** Validates a customer document against the mock API */
+/** Validates a customer document: usa mock do agente quando mode=mock, senão chama a API. */
 const validateCustomer = async (document: string, tenantId?: string, assistantId?: string): Promise<{ valid: boolean; name?: string; blocked?: boolean }> => {
+    const tid = tenantId ?? 'default';
+    const aid = assistantId ?? undefined;
+    const assistant = getAssistantConfig(tid, aid);
+
+    if (assistant.api?.mode === 'mock' && assistant.api.mockData?.clientes && typeof assistant.api.mockData.clientes === 'object') {
+        const clientes = assistant.api.mockData.clientes as Record<string, Record<string, unknown>>;
+        const digitsOnly = document.replace(/\D/g, '');
+        const client = clientes[digitsOnly];
+        if (!client || typeof client !== 'object') {
+            return { valid: false };
+        }
+        const status = (client.status as string)?.toLowerCase?.() ?? '';
+        const name = (client.fantasia as string) || (client.razao_social as string) || 'Cliente';
+        if (status === 'bloqueado') {
+            return { valid: false, blocked: true, name };
+        }
+        if (status !== 'ativo') {
+            return { valid: false, name };
+        }
+        return { valid: true, name };
+    }
+
     try {
         const base = getApiBaseUrl(tenantId, assistantId);
         const route = getRoute(tenantId ?? 'default', assistantId, 'clientes');

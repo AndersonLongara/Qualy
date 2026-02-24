@@ -95,6 +95,15 @@ const INTENT_RULES: IntentRule[] = [
 ];
 
 /**
+ * Verifica se a mensagem contém um código de produto (SKU).
+ * Usado para enviar "quero comprar o produto CIM-001" à IA em vez do fluxo de pedido.
+ */
+export function messageContainsProductCode(message: string): boolean {
+    if (!message || typeof message !== 'string') return false;
+    return /\b[A-Za-z]{2,}-?\d+[A-Za-z0-9]*\b/.test(message.trim());
+}
+
+/**
  * Extracts quantity from a message like "quero 2 unidades" or "sim quero 5 unidades do produto".
  * Returns the first number in range 1–9999 or null.
  */

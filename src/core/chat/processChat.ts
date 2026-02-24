@@ -5,7 +5,7 @@
  */
 import axios from 'axios';
 import { getConfig, getAssistantConfig } from '../../config/tenant';
-import { detectIntent } from '../ai/intent';
+import { detectIntent, messageContainsProductCode } from '../ai/intent';
 import { createOrderSession, processOrderFlow } from '../ai/order-flow';
 import { getAIResponse } from '../ai/provider';
 import { sessionStore, currentAgentStore } from '../../mock/sessionStore';
@@ -126,6 +126,10 @@ export async function processChatMessage(
     // Se o agente tem roteamento ativo (ex.: Atendente → Vendedor), pedidos de compra devem ir para a IA para ela transferir, não para o fluxo de pedido global
     const hasHandoffRoutes = !!(assistant.handoffRules?.enabled && assistant.handoffRules.routes?.length);
     if (hasHandoffRoutes && (intent === 'START_ORDER' || intent === 'START_ORDER_WITH_QUANTITY')) {
+        intent = 'UNKNOWN';
+    }
+    // Se a mensagem já traz código de produto (ex.: "sim quero comprar o produto CIM-001"), manda para a IA para ela consultar estoque em vez do fluxo que pediria "qual produto?"
+    if ((intent === 'START_ORDER' || intent === 'START_ORDER_WITH_QUANTITY') && messageContainsProductCode(message)) {
         intent = 'UNKNOWN';
     }
 
