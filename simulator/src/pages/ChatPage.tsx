@@ -305,9 +305,9 @@ export default function ChatPage({ assistantId, showConversationList = false }: 
     };
 
     return (
-        <div className={cn('relative flex h-full w-full overflow-hidden font-sans antialiased transition-colors duration-300', t.outerBg, t.text)}>
+        <div className={cn('relative flex h-full min-h-0 w-full overflow-hidden font-sans antialiased transition-colors duration-300', t.outerBg, t.text)}>
             <div className={cn('absolute top-0 left-0 right-0 h-16 z-0 hidden md:block transition-colors duration-300', t.greenStrip)} />
-            <div className={cn('z-10 flex h-full w-full max-w-[1700px] md:h-full md:my-0 md:mx-auto md:shadow-2xl md:flex-row md:overflow-hidden md:rounded-lg border', t.sidebarBorder)}>
+            <div className={cn('z-10 flex h-full min-h-0 w-full max-w-[1700px] md:h-full md:min-h-0 md:my-0 md:mx-auto md:shadow-2xl md:flex-row md:overflow-hidden md:rounded-lg border', t.sidebarBorder)}>
                 <div className={cn('hidden md:flex md:w-[380px] lg:w-[420px] flex-col min-h-0 border-r transition-colors duration-300 shrink-0', t.sidebarBg, t.sidebarBorder)}>
                     <div className={cn('h-[59px] flex items-center justify-between px-4 py-2.5 transition-colors duration-300', t.headerBg)}>
                         <div className="w-10 h-10 rounded-full bg-gray-400 flex items-center justify-center overflow-hidden">
@@ -327,10 +327,7 @@ export default function ChatPage({ assistantId, showConversationList = false }: 
                             <input type="text" placeholder="Pesquisar ou começar uma nova conversa" className={cn('w-full bg-transparent outline-none text-sm', t.text, t.subText)} />
                         </div>
                     </div>
-                    <div
-                        className={cn('flex-1 min-h-[200px] overflow-y-auto overflow-x-hidden transition-colors duration-300', t.sidebarBg)}
-                        style={{ maxHeight: 'min(70vh, 600px)' }}
-                    >
+                    <div className={cn('flex-1 min-h-0 overflow-y-auto overflow-x-hidden transition-colors duration-300', t.sidebarBg)}>
                         <div className={cn("flex items-center px-3 py-3 cursor-pointer shrink-0", t.activeChatBg)}>
                             <div className={cn('relative w-[49px] h-[49px] rounded-full bg-emerald-600 flex items-center justify-center text-white font-bold text-xl mr-3 flex-shrink-0')}>
                                 Q
@@ -381,7 +378,7 @@ export default function ChatPage({ assistantId, showConversationList = false }: 
                             ))}
                     </div>
                 </div>
-                <div className={cn('flex-1 flex flex-col min-w-0 min-h-0 relative transition-colors duration-300', t.chatBg)}>
+                <div className={cn('flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden relative transition-colors duration-300', t.chatBg)}>
                     <div className={cn('h-[59px] flex items-center justify-between px-4 py-2.5 z-10 border-l transition-colors duration-300', t.headerBg, t.sidebarBorder)}>
                         <div className="flex items-center gap-3 cursor-pointer">
                             <div className={cn('md:hidden', t.iconColor)}><ArrowLeft /></div>
