@@ -104,6 +104,16 @@ export function messageContainsProductCode(message: string): boolean {
 }
 
 /**
+ * Verifica se a mensagem menciona um produto por nome (ex.: "pedido com o produto Cimento CP-II 50kg").
+ * Usado para enviar à IA em vez do fluxo que pediria "qual produto?".
+ */
+export function messageContainsProductName(message: string): boolean {
+    if (!message || typeof message !== 'string') return false;
+    const t = message.trim();
+    return /\b(produto|do produto|com o produto)\s+[\w\s\-\.]{3,}/i.test(t) || /\b(cimento|argamassa|tijolo|areia|cal|bloco|ferro|telha)\b/i.test(t);
+}
+
+/**
  * Extracts quantity from a message like "quero 2 unidades" or "sim quero 5 unidades do produto".
  * Returns the first number in range 1–9999 or null.
  */
