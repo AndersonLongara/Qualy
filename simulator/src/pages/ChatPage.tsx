@@ -327,7 +327,10 @@ export default function ChatPage({ assistantId, showConversationList = false }: 
                             <input type="text" placeholder="Pesquisar ou começar uma nova conversa" className={cn('w-full bg-transparent outline-none text-sm', t.text, t.subText)} />
                         </div>
                     </div>
-                    <div className={cn('flex-1 min-h-[280px] overflow-y-auto overflow-x-hidden transition-colors duration-300', t.sidebarBg)}>
+                    <div
+                        className={cn('flex-1 min-h-[200px] overflow-y-auto overflow-x-hidden transition-colors duration-300', t.sidebarBg)}
+                        style={{ maxHeight: 'min(70vh, 600px)' }}
+                    >
                         <div className={cn("flex items-center px-3 py-3 cursor-pointer shrink-0", t.activeChatBg)}>
                             <div className={cn('relative w-[49px] h-[49px] rounded-full bg-emerald-600 flex items-center justify-center text-white font-bold text-xl mr-3 flex-shrink-0')}>
                                 Q

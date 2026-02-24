@@ -110,13 +110,15 @@ export default function GeneralChatPreviewPage() {
                     </label>
                 )}
             </div>
-            <div className="flex-1 min-h-0 rounded-xl border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#202c33] overflow-hidden shadow-sm">
+            <div className="flex-1 min-h-0 max-h-[calc(100vh-11rem)] rounded-xl border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#202c33] overflow-hidden shadow-sm flex flex-col">
                 {assistants.length === 0 ? (
                     <div className="flex items-center justify-center h-64 text-[#54656f] dark:text-[#aebac1]">
                         Nenhum agente configurado. Crie um agente na empresa para usar o preview.
                     </div>
                 ) : (
-                    <ChatPage assistantId={selectedAgentId} showConversationList />
+                    <div className="flex-1 min-h-0 flex flex-col">
+                        <ChatPage assistantId={selectedAgentId} showConversationList />
+                    </div>
                 )}
             </div>
         </div>
