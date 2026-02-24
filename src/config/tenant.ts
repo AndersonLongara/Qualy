@@ -244,10 +244,23 @@ function normalizeAssistantApi(raw: unknown): AssistantApiConfig | null {
     const mockDataRaw = o.mockData && typeof o.mockData === 'object' && !Array.isArray(o.mockData)
         ? (o.mockData as Record<string, unknown>)
         : null;
+    let clientesMap: Record<string, unknown> | undefined;
+    if (mockDataRaw?.clientes != null) {
+        if (typeof mockDataRaw.clientes === 'object' && !Array.isArray(mockDataRaw.clientes)) {
+            clientesMap = mockDataRaw.clientes as Record<string, unknown>;
+        } else if (typeof mockDataRaw.clientes === 'string') {
+            try {
+                const parsed = JSON.parse(mockDataRaw.clientes) as unknown;
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                    clientesMap = parsed as Record<string, unknown>;
+                }
+            } catch {
+                /* ignorar JSON inválido */
+            }
+        }
+    }
     const mockData = mockDataRaw ? {
-        clientes: mockDataRaw.clientes && typeof mockDataRaw.clientes === 'object' && !Array.isArray(mockDataRaw.clientes)
-            ? (mockDataRaw.clientes as Record<string, unknown>)
-            : undefined,
+        clientes: clientesMap,
         titulos: Array.isArray(mockDataRaw.titulos)
             ? undefined
             : mockDataRaw.titulos && typeof mockDataRaw.titulos === 'object'

@@ -111,22 +111,22 @@ const validateCustomer = async (document: string, tenantId?: string, assistantId
     const aid = assistantId ?? undefined;
     const assistant = getAssistantConfig(tid, aid);
 
+    const digitsOnly = document.replace(/\D/g, '');
     if (assistant.api?.mode === 'mock' && assistant.api.mockData?.clientes && typeof assistant.api.mockData.clientes === 'object') {
         const clientes = assistant.api.mockData.clientes as Record<string, Record<string, unknown>>;
-        const digitsOnly = document.replace(/\D/g, '');
         const client = clientes[digitsOnly];
-        if (!client || typeof client !== 'object') {
-            return { valid: false };
-        }
-        const status = (client.status as string)?.toLowerCase?.() ?? '';
-        const name = (client.fantasia as string) || (client.razao_social as string) || 'Cliente';
-        if (status === 'bloqueado') {
-            return { valid: false, blocked: true, name };
-        }
-        if (status !== 'ativo') {
+        if (client && typeof client === 'object') {
+            const status = (client.status as string)?.toLowerCase?.() ?? '';
+            const name = (client.fantasia as string) || (client.razao_social as string) || 'Cliente';
+            if (status === 'bloqueado') {
+                return { valid: false, blocked: true, name };
+            }
+            if (status === 'ativo') {
+                return { valid: true, name };
+            }
             return { valid: false, name };
         }
-        return { valid: true, name };
+        // Mock do agente não tem o documento: tenta API (mock global do servidor)
     }
 
     try {

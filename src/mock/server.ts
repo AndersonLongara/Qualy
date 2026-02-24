@@ -43,6 +43,24 @@ export const CLIENTS: Record<string, any> = {
         ],
     },
 
+    // ✅ Ativo — CNPJ usado em testes (preview/order flow)
+    '12345678000195': {
+        id: 'CUST-TEST',
+        razao_social: 'Cliente Teste LTDA',
+        fantasia: 'Cliente Teste',
+        documento: '12.345.678/0001-95',
+        status: 'ativo',
+        segmento: 'Varejo Alimentar',
+        email: 'financeiro@mercadinhodojoao.com.br',
+        telefone: '(11) 94444-5555',
+        vendedor: { id: 'V-01', nome: 'Carlos Almeida' },
+        filiais: [
+            { id: 'FIL-01', nome: 'Matriz — São Paulo (SP)' },
+            { id: 'FIL-02', nome: 'Filial — Campinas (SP)' },
+            { id: 'FIL-03', nome: 'Filial — Rio de Janeiro (RJ)' },
+        ],
+    },
+
     // 🔴 Bloqueado — inadimplência
     '98765432000100': {
         id: 'CUST-002',
