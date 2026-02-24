@@ -119,9 +119,18 @@ export default function ChatPage({ assistantId, showConversationList = false }: 
     const t = isDark ? themes.dark : themes.light;
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
+    // Sincronizar com o agente da página só quando NÃO houver agente salvo para esta conversa (evita sobrescrever vendedor ao abrir conversa transferida)
     useEffect(() => {
+        const tid = tenantId || 'default';
+        const agentKey = storageAgentKey(tid, sessionId);
+        try {
+            const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(agentKey)?.trim() : null;
+            if (stored) return;
+        } catch {
+            /* ignore */
+        }
         setActiveAgentId(assistantId);
-    }, [assistantId]);
+    }, [assistantId, tenantId, sessionId]);
 
     // Persistência: carregar histórico e agente ativo ao montar (tenantId + sessionId)
     useEffect(() => {

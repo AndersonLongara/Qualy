@@ -14,6 +14,7 @@ import AgentDetailPage from './AgentDetailPage';
 import TenantToolsPage from './TenantToolsPage';
 import ConversationTimelinePage from './ConversationTimelinePage';
 import ExecutionDetailPage from '../ExecutionDetailPage';
+import GeneralChatPreviewPage from './GeneralChatPreviewPage';
 
 export default function EmpresasLayout() {
     const key = sessionStorage.getItem(ADMIN_KEY_STORAGE);
@@ -50,6 +51,7 @@ export default function EmpresasLayout() {
                 <div className="w-full max-w-7xl mx-auto px-4 py-4">
                     <Routes>
                         <Route path="agentes/:companyId/:agentId" element={<AgentDetailPage />} />
+                        <Route path=":companyId/preview" element={<GeneralChatPreviewPage />} />
                         <Route path="execucoes/:id" element={<ExecutionDetailPage />} />
                         <Route path=":companyId/agentes/new" element={<NewAgentPage />} />
                         <Route path="new" element={<AdminTenantDetailPage basePath="/empresas" />} />

@@ -101,6 +101,13 @@ export default function CompanyAgentsPage() {
                         Ferramentas
                     </Link>
                     <Link
+                        to={`${BASE}/${encodeURIComponent(companyId!)}/preview`}
+                        className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-[#00a884] hover:bg-[#00a884]/10 dark:hover:bg-[#00a884]/20"
+                    >
+                        <MessageCircle size={18} />
+                        Chat preview geral
+                    </Link>
+                    <Link
                         to={`${BASE}/${encodeURIComponent(companyId!)}/editar`}
                         className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-[#54656f] dark:text-[#aebac1] hover:bg-black/5 dark:hover:bg-white/5 hover:text-[#00a884]"
                     >
