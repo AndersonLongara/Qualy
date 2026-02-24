@@ -308,7 +308,7 @@ export default function ChatPage({ assistantId, showConversationList = false }: 
         <div className={cn('relative flex h-full w-full overflow-hidden font-sans antialiased transition-colors duration-300', t.outerBg, t.text)}>
             <div className={cn('absolute top-0 left-0 right-0 h-16 z-0 hidden md:block transition-colors duration-300', t.greenStrip)} />
             <div className={cn('z-10 flex h-full w-full max-w-[1700px] md:h-full md:my-0 md:mx-auto md:shadow-2xl md:flex-row md:overflow-hidden md:rounded-lg border', t.sidebarBorder)}>
-                <div className={cn('hidden md:flex w-[400px] flex-col border-r transition-colors duration-300', t.sidebarBg, t.sidebarBorder)}>
+                <div className={cn('hidden md:flex w-[400px] flex-col min-h-0 border-r transition-colors duration-300', t.sidebarBg, t.sidebarBorder)}>
                     <div className={cn('h-[59px] flex items-center justify-between px-4 py-2.5 transition-colors duration-300', t.headerBg)}>
                         <div className="w-10 h-10 rounded-full bg-gray-400 flex items-center justify-center overflow-hidden">
                             <img src="https://ui-avatars.com/api/?name=Wesley+S&background=random" alt="User" />
@@ -327,8 +327,8 @@ export default function ChatPage({ assistantId, showConversationList = false }: 
                             <input type="text" placeholder="Pesquisar ou começar uma nova conversa" className={cn('w-full bg-transparent outline-none text-sm', t.text, t.subText)} />
                         </div>
                     </div>
-                    <div className={cn('flex-1 overflow-y-auto transition-colors duration-300', t.sidebarBg)}>
-                        <div className={cn('flex items-center px-3 py-3 cursor-pointer', t.activeChatBg)}>
+                    <div className={cn('flex-1 min-h-0 overflow-y-auto transition-colors duration-300', t.sidebarBg)}>
+                        <div className={cn("flex items-center px-3 py-3 cursor-pointer shrink-0", t.activeChatBg)}>
                             <div className={cn('relative w-[49px] h-[49px] rounded-full bg-emerald-600 flex items-center justify-center text-white font-bold text-xl mr-3 flex-shrink-0')}>
                                 Q
                                 <div className={cn('absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2', t.dotBorder)} />
@@ -354,7 +354,7 @@ export default function ChatPage({ assistantId, showConversationList = false }: 
                                         key={s.phone}
                                         type="button"
                                         onClick={() => setSessionId(s.phone)}
-                                        className={cn('w-full flex items-center px-3 py-3 text-left border-b transition-colors hover:bg-black/5 dark:hover:bg-white/5', t.sidebarBorder)}
+                                        className={cn('w-full flex items-center px-3 py-3 text-left border-b transition-colors hover:bg-black/5 dark:hover:bg-white/5 shrink-0', t.sidebarBorder)}
                                     >
                                         <div className={cn('w-[49px] h-[49px] rounded-full bg-emerald-600/80 flex items-center justify-center text-white font-bold text-sm mr-3 flex-shrink-0')}>Q</div>
                                         <div className="flex-1 min-w-0 flex flex-col justify-center">
@@ -368,7 +368,7 @@ export default function ChatPage({ assistantId, showConversationList = false }: 
                                     </button>
                                 ))
                             : [1, 2, 3].map((i) => (
-                                <div key={i} className="flex items-center px-3 py-3 cursor-pointer opacity-40">
+                                <div key={i} className="flex items-center px-3 py-3 cursor-pointer opacity-40 shrink-0">
                                     <div className={cn('w-[49px] h-[49px] rounded-full mr-3', t.skeletonBlock)} />
                                     <div className={cn('flex-1 border-b pb-3 flex flex-col gap-2 justify-center', t.sidebarBorder)}>
                                         <div className={cn('w-32 h-4 rounded', t.skeletonBlock)} />
