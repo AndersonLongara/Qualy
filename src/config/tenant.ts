@@ -564,12 +564,18 @@ export function getAssistantConfig(tenantId: string, assistantId?: string | null
         };
     }
 
-    const assistant = config.assistants.find((a) => a.id === aid);
+    const aidLower = aid.toLowerCase();
+    const assistant = config.assistants.find((a) => (a.id || '').toLowerCase() === aidLower);
     const target = assistant ?? config.assistants[0];
+    const rawName = target.name?.trim() || '';
+    const name =
+        target.id === 'vendedor' && (!rawName || rawName.toLowerCase() === 'atendente')
+            ? 'Vendedor'
+            : rawName || config.branding?.assistantName || 'Assistente';
 
     return {
         id: target.id,
-        name: target.name,
+        name,
         systemPromptPath: target.systemPromptPath ?? null,
         systemPrompt: target.systemPrompt ?? null,
         model: target.model ?? null,
@@ -580,3 +586,4 @@ export function getAssistantConfig(tenantId: string, assistantId?: string | null
         toolIds: Array.isArray(target.toolIds) && target.toolIds.length > 0 ? target.toolIds : undefined,
     };
 }
+

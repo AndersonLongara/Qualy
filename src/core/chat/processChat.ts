@@ -78,7 +78,8 @@ export async function processChatMessage(
 ): Promise<ProcessChatResult> {
     const tid = tenantId?.trim() || DEFAULT_TENANT;
     const storedAgent = await currentAgentStore.get(tid, phone);
-    const effectiveAssistantId = (storedAgent && storedAgent.trim()) ? storedAgent.trim() : (assistantId && assistantId.trim()) ? assistantId.trim() : undefined;
+    const requestedId = (assistantId && assistantId.trim()) ? assistantId.trim() : undefined;
+    const effectiveAssistantId = (storedAgent && storedAgent.trim()) ? storedAgent.trim().toLowerCase() : (requestedId ? requestedId.toLowerCase() : undefined);
     const session = await sessionStore.get(tid, phone, effectiveAssistantId);
     let intent = detectIntent(message);
     // Garante que pedidos explícitos de transferência sempre vão para a IA (tool transferir_para_agente)
@@ -190,7 +191,8 @@ export async function processChatMessage(
             console.log(`[CHAT] HANDOFF (fallback confirmação): usuário confirmou, agente "${effectiveAssistantId}" → "${route.agentId}"`);
         }
         if (handoffToReturn) {
-            await currentAgentStore.set(tid, phone, handoffToReturn.targetAgentId);
+            const targetId = handoffToReturn.targetAgentId.trim().toLowerCase();
+            await currentAgentStore.set(tid, phone, targetId);
             if (!handledByLLM && reply) {
                 session.history.push({ role: 'user', content: message });
                 session.history.push({ role: 'assistant', content: reply });
@@ -202,16 +204,16 @@ export async function processChatMessage(
             let initialReply: string | undefined;
             try {
                 const contextMessage = `[Transferência] O cliente foi encaminhado para você. O que o cliente disse: "${message}". A mensagem que o atendente anterior enviou ao cliente ao transferir: "${reply}". Responda com UMA única mensagem de boas-vindas e já comece a atender o cliente de forma ativa (ex.: perguntando como pode ajudar com o pedido ou o que precisa). Não repita que está transferindo; assuma que o cliente já está com você.`;
-                const newAgentResult = await getAIResponse(tid, contextMessage, [], handoffToReturn.targetAgentId);
+                const newAgentResult = await getAIResponse(tid, contextMessage, [], targetId);
                 initialReply = (newAgentResult.content || '').trim() || undefined;
                 if (initialReply) {
-                    const newAgentSession = await sessionStore.get(tid, phone, handoffToReturn.targetAgentId);
+                    const newAgentSession = await sessionStore.get(tid, phone, targetId);
                     newAgentSession.history = [
                         { role: 'user' as const, content: message },
                         { role: 'assistant' as const, content: initialReply },
                     ];
-                    await sessionStore.set?.(tid, phone, newAgentSession, handoffToReturn.targetAgentId);
-                    console.log(`[CHAT] Initial reply do agente "${handoffToReturn.targetAgentId}": ${initialReply.substring(0, 60)}...`);
+                    await sessionStore.set?.(tid, phone, newAgentSession, targetId);
+                    console.log(`[CHAT] Initial reply do agente "${targetId}": ${initialReply.substring(0, 60)}...`);
                 }
             } catch (err: any) {
                 console.warn('[CHAT] Erro ao gerar initialReply do agente de destino:', err?.message);
@@ -221,11 +223,11 @@ export async function processChatMessage(
                 reply,
                 debug,
                 handoff: {
-                    targetAgentId: handoffToReturn.targetAgentId,
+                    targetAgentId: targetId,
                     transitionMessage: handoffToReturn.transitionMessage,
                     ...(initialReply ? { initialReply } : {}),
                 },
-                effectiveAssistantId: effectiveAssistantId ?? null,
+                effectiveAssistantId: targetId,
             };
         }
     }

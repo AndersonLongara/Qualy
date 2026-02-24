@@ -327,6 +327,7 @@ export const PEDIDOS: Record<string, any[]> = {
 export const ESTOQUE = [
     // Cimentos
     { sku: 'PROD-001', nome: 'Cimento CP II 50kg', categoria: 'Cimento', unidade: 'SC', estoque_disponivel: 500, preco_tabela: 29.90, preco_promocional: null, imagem_url: 'https://example.com/img/cimento-cpii.jpg' },
+    { sku: 'CIM-001', nome: 'Cimento CP-II 50kg', categoria: 'Cimento', unidade: 'SC', estoque_disponivel: 500, preco_tabela: 42.00, preco_promocional: 38.00, imagem_url: 'https://example.com/img/cimento-cpii.jpg' },
     { sku: 'PROD-008', nome: 'Cimento CP IV 50kg (Baixo Calor)', categoria: 'Cimento', unidade: 'SC', estoque_disponivel: 80, preco_tabela: 33.50, preco_promocional: 31.00, imagem_url: 'https://example.com/img/cimento-cpiv.jpg' },
     { sku: 'PROD-009', nome: 'Cimento CP V ARI 50kg', categoria: 'Cimento', unidade: 'SC', estoque_disponivel: 0, preco_tabela: 36.00, preco_promocional: null, imagem_url: 'https://example.com/img/cimento-cpv.jpg' },
     // Alvenaria

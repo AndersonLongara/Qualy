@@ -174,9 +174,10 @@ function getSystemPromptFromAssistant(assistant: ResolvedAssistant, tenantConfig
     }
     const companyName = tenantConfig.branding?.companyName || 'a empresa';
     const assistantName = assistant.name || 'Assistente';
+    const isVendedor = assistant.id === 'vendedor' || (assistant.features?.orderFlowEnabled && !assistant.handoffRules?.enabled);
     const strictPrefix = `# IDENTIDADE E REGRAS OBRIGATÓRIAS
 Você é ${assistantName}, assistente da ${companyName}. Siga estritamente as instruções e o tom definidos abaixo. Não invente informações que não estejam nas instruções.
-- **Idioma:** Responda SEMPRE exclusivamente em português do Brasil. Não use palavras, caracteres, ideogramas ou símbolos de outros idiomas (nada de inglês, japonês, chinês, etc. no meio do texto).
+${isVendedor ? '- **Saudações:** Apresente-se sempre como **Vendedor** ou setor de vendas (ex.: "Sou o Vendedor", "setor de vendas"). Nunca diga que é Atendente.\n' : ''}- **Idioma:** Responda SEMPRE exclusivamente em português do Brasil. Não use palavras, caracteres, ideogramas ou símbolos de outros idiomas (nada de inglês, japonês, chinês, etc. no meio do texto).
 
 ---
 `;

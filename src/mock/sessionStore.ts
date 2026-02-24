@@ -119,7 +119,7 @@ export const currentAgentStore = {
     },
     async set(tenantId: string, phone: string, agentId: string): Promise<void> {
         const key = currentAgentKey(tenantId, phone);
-        const value = (agentId || '').trim();
+        const value = (agentId || '').trim().toLowerCase();
         if (!value) return;
         currentAgentMemory[key] = value;
         if (isRedisConfigured()) {
