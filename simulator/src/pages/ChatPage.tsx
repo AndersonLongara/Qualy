@@ -132,7 +132,7 @@ export default function ChatPage({ assistantId, showConversationList = false }: 
         setActiveAgentId(assistantId);
     }, [assistantId, tenantId, sessionId]);
 
-    // Persistência: carregar histórico e agente ativo ao montar (tenantId + sessionId)
+    // Persistência: carregar histórico e agente ativo ao trocar sessão (tenantId + sessionId)
     useEffect(() => {
         const tid = tenantId || 'default';
         const chatKey = storageChatKey(tid, sessionId);
@@ -141,12 +141,14 @@ export default function ChatPage({ assistantId, showConversationList = false }: 
             const savedChat = localStorage.getItem(chatKey);
             if (savedChat) {
                 const parsed = JSON.parse(savedChat) as Message[];
-                if (Array.isArray(parsed) && parsed.length > 0) setMessages(parsed);
+                setMessages(Array.isArray(parsed) ? parsed : []);
+            } else {
+                setMessages([]);
             }
             const savedAgent = localStorage.getItem(agentKey);
             if (savedAgent?.trim()) setActiveAgentId(savedAgent.trim());
         } catch {
-            /* ignore */
+            setMessages([]);
         }
     }, [tenantId, sessionId]);
 
@@ -327,7 +329,10 @@ export default function ChatPage({ assistantId, showConversationList = false }: 
                             <input type="text" placeholder="Pesquisar ou começar uma nova conversa" className={cn('w-full bg-transparent outline-none text-sm', t.text, t.subText)} />
                         </div>
                     </div>
-                    <div className={cn('flex-1 min-h-0 overflow-y-auto overflow-x-hidden transition-colors duration-300', t.sidebarBg)}>
+                    <div
+                        className={cn('flex-1 min-h-0 overflow-y-auto overflow-x-hidden transition-colors duration-300', t.sidebarBg)}
+                        style={{ maxHeight: 'calc(100vh - 180px)' }}
+                    >
                         <div className={cn("flex items-center px-3 py-3 cursor-pointer shrink-0", t.activeChatBg)}>
                             <div className={cn('relative w-[49px] h-[49px] rounded-full bg-emerald-600 flex items-center justify-center text-white font-bold text-xl mr-3 flex-shrink-0')}>
                                 Q
