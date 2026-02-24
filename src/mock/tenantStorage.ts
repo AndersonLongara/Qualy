@@ -132,6 +132,7 @@ export function getTenantRaw(tenantId: string): Record<string, unknown> {
         features: merged.features,
         ...(merged.assistants && merged.assistants.length > 0 ? { assistants: merged.assistants } : {}),
         ...(merged.tools && merged.tools.length > 0 ? { tools: merged.tools } : {}),
+        ...(merged.chatFlow ? { chatFlow: merged.chatFlow } : {}),
     };
 }
 
@@ -210,6 +211,7 @@ export async function writeTenant(tenantId: string, payload: Record<string, unkn
         features: merged.features,
         ...(merged.assistants && merged.assistants.length > 0 ? { assistants: merged.assistants } : {}),
         ...(merged.tools && merged.tools.length > 0 ? { tools: merged.tools } : {}),
+        ...(merged.chatFlow ? { chatFlow: merged.chatFlow } : {}),
     };
     fs.writeFileSync(filePath, JSON.stringify(toWrite, null, 2), 'utf8');
 

@@ -192,6 +192,7 @@ router.post('/tenants/:id/assistants', async (req: Request, res: Response) => {
             prompt: current.prompt,
             features: current.features,
             assistants: [...currentAssistants, newAssistant],
+            ...(current.chatFlow ? { chatFlow: current.chatFlow } : {}),
         };
         await writeTenant(id, merged);
         const config = getTenantConfig(id);
@@ -220,6 +221,7 @@ router.patch('/tenants/:id', async (req: Request, res: Response) => {
             features: { ...current.features, ...body.features },
             assistants: body.assistants !== undefined ? body.assistants : current.assistants,
             tools: body.tools !== undefined ? body.tools : current.tools,
+            chatFlow: body.chatFlow !== undefined ? body.chatFlow : current.chatFlow,
         };
         await writeTenant(id, merged);
         const config = getTenantConfig(id);
@@ -278,6 +280,7 @@ router.post('/tenants/:id/tools', async (req: Request, res: Response) => {
             features: current.features,
             assistants: current.assistants,
             tools: [...currentTools, newTool],
+            ...(current.chatFlow ? { chatFlow: current.chatFlow } : {}),
         };
         await writeTenant(id, mergedWrite);
         const config = getTenantConfig(id);
@@ -318,6 +321,7 @@ router.patch('/tenants/:id/tools/:toolId', async (req: Request, res: Response) =
             features: current.features,
             assistants: current.assistants,
             tools: newTools,
+            ...(current.chatFlow ? { chatFlow: current.chatFlow } : {}),
         };
         await writeTenant(id, mergedWrite);
         const config = getTenantConfig(id);
@@ -352,6 +356,7 @@ router.delete('/tenants/:id/tools/:toolId', async (req: Request, res: Response) 
             features: current.features,
             assistants: current.assistants,
             tools: newTools,
+            ...(current.chatFlow ? { chatFlow: current.chatFlow } : {}),
         };
         await writeTenant(id, mergedWrite);
         const config = getTenantConfig(id);
