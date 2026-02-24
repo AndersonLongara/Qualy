@@ -617,6 +617,28 @@ export function getAssistantConfig(tenantId: string, assistantId?: string | null
             ? 'Vendedor'
             : rawName || config.branding?.assistantName || 'Assistente';
 
+    let handoffRules = target.handoffRules ? normalizeHandoffRules(target.handoffRules) : null;
+
+    // Auto-inject: se o agente é o entryAgentId e não tem handoffRules,
+    // gera rotas automáticas para os demais agentes do tenant.
+    if ((!handoffRules || !handoffRules.enabled || !handoffRules.routes?.length) && config.chatFlow?.entryAgentId) {
+        const entryLower = config.chatFlow.entryAgentId.toLowerCase();
+        const targetLower = target.id.toLowerCase();
+        if (targetLower === entryLower && config.assistants.length > 1) {
+            const otherAgents = config.assistants.filter((a) => (a.id || '').toLowerCase() !== entryLower);
+            if (otherAgents.length > 0) {
+                handoffRules = {
+                    enabled: true,
+                    routes: otherAgents.map((a) => ({
+                        agentId: a.id,
+                        label: a.name || a.id,
+                        description: `Transferir para ${a.name || a.id}`,
+                    })),
+                };
+            }
+        }
+    }
+
     return {
         id: target.id,
         name,
@@ -626,7 +648,7 @@ export function getAssistantConfig(tenantId: string, assistantId?: string | null
         temperature: clampTemperature(target.temperature) ?? defaultTemp,
         api: target.api ?? null,
         features: resolveFeatures(target.features),
-        handoffRules: target.handoffRules ?? null,
+        handoffRules,
         toolIds: Array.isArray(target.toolIds) && target.toolIds.length > 0 ? target.toolIds : undefined,
     };
 }
