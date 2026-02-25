@@ -6,6 +6,7 @@
 import axios from 'axios';
 import { getConfig, getAssistantConfig, type OrderFlowMessages } from '../../config/tenant';
 import { parseQuantityFromOrderMessage } from './intent';
+import { CLIENTS as DEFAULT_MOCK_CLIENTS } from '../../mock/data';
 
 const DEFAULT_ORDER_FLOW_MESSAGES: Record<string, string> = {
     askProduct: 'Para fazer um pedido, primeiro preciso saber qual produto deseja. Poderia informar o nome ou código?',
@@ -114,10 +115,13 @@ const validateCustomer = async (document: string, tenantId?: string, assistantId
     const digitsOnly = document.replace(/\D/g, '');
     if (assistant.api?.mode === 'mock' && assistant.api.mockData?.clientes && typeof assistant.api.mockData.clientes === 'object') {
         const clientes = assistant.api.mockData.clientes as Record<string, Record<string, unknown>>;
-        const client = clientes[digitsOnly];
+        // Lookup: chave exata (CNPJ/CPF só dígitos) ou variante sem "00" no meio (ex.: plataforma com "12345678195" e usuário digita 12345678000195)
+        const client =
+            clientes[digitsOnly] ??
+            (digitsOnly.length === 14 ? clientes[digitsOnly.replace(/00(\d{3})$/, '$1')] : undefined);
         if (client && typeof client === 'object') {
             const status = (client.status as string)?.toLowerCase?.() ?? '';
-            const name = (client.fantasia as string) || (client.razao_social as string) || 'Cliente';
+            const name = (client.fantasia as string) || (client.razao_social as string) || (client.name as string) || 'Cliente';
             if (status === 'bloqueado') {
                 return { valid: false, blocked: true, name };
             }
@@ -142,6 +146,15 @@ const validateCustomer = async (document: string, tenantId?: string, assistantId
         }
         return { valid: true, name: client.fantasia || client.razao_social };
     } catch {
+        // HTTP falhou (ex.: Vercel não chama a si mesmo). Usa mock global compartilhado (mesmo estilo do estoque).
+        const client = DEFAULT_MOCK_CLIENTS[digitsOnly];
+        if (client && typeof client === 'object') {
+            const status = (client.status as string)?.toLowerCase?.() ?? '';
+            const name = (client.fantasia as string) || (client.razao_social as string) || 'Cliente';
+            if (status === 'bloqueado') return { valid: false, blocked: true, name };
+            if (status === 'ativo') return { valid: true, name };
+            return { valid: false, name };
+        }
         return { valid: false };
     }
 };

@@ -118,6 +118,7 @@ export default function ChatPage({ assistantId, showConversationList = false }: 
 
     const t = isDark ? themes.dark : themes.light;
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const sendingRef = useRef(false);
 
     // Carregar histórico, agente e sincronizar ao trocar sessão
     useEffect(() => {
@@ -234,6 +235,8 @@ export default function ChatPage({ assistantId, showConversationList = false }: 
 
     const handleSend = async () => {
         if (!input.trim()) return;
+        if (sendingRef.current) return;
+        sendingRef.current = true;
         const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const userMsg: Message = {
             id: Date.now().toString(),
@@ -266,13 +269,17 @@ export default function ChatPage({ assistantId, showConversationList = false }: 
             if (response.data.debug) {
                 console.info('%c[DEBUG-AI] Histórico Técnico:', 'color: #00a884; font-weight: bold;', response.data.debug);
             }
-            const botMsg: Message = {
-                id: (Date.now() + 1).toString(),
-                role: 'bot',
-                text: response.data.reply || 'Desculpe, não entendi.',
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            };
-            setMessages((prev) => [...prev, botMsg]);
+            const hasHandoff = !!response.data.handoff?.targetAgentId;
+            // Em handoff não exibir reply em balão separado: a mesma mensagem já vai na notificação de transferência
+            if (!hasHandoff) {
+                const botMsg: Message = {
+                    id: (Date.now() + 1).toString(),
+                    role: 'bot',
+                    text: response.data.reply || 'Desculpe, não entendi.',
+                    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                };
+                setMessages((prev) => [...prev, botMsg]);
+            }
 
             // Escalação humana: exibe notificação especial
             if (response.data.humanEscalation) {
@@ -286,14 +293,14 @@ export default function ChatPage({ assistantId, showConversationList = false }: 
                 setMessages((prev) => [...prev, escalationMsg]);
             }
 
-            // Handoff: troca o agente ativo, exibe notificação e primeira mensagem do novo agente (com contexto)
+            // Handoff: exibe uma única notificação (com mensagem de transição) + primeira mensagem do novo agente
             if (response.data.handoff?.targetAgentId) {
                 const { targetAgentId, transitionMessage, initialReply } = response.data.handoff;
                 const notificationMsg: Message = {
                     id: (Date.now() + 2).toString(),
                     role: 'bot',
-                    text: transitionMessage
-                        ? `Transferido para o agente **${targetAgentId}**. ${transitionMessage}`
+                    text: transitionMessage?.trim()
+                        ? `Transferido para o agente **${targetAgentId}**. ${transitionMessage.trim()}`
                         : `Atendimento transferido para o agente **${targetAgentId}**. As próximas mensagens serão atendidas por ele.`,
                     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                     isHandoffNotification: true,
@@ -323,6 +330,7 @@ export default function ChatPage({ assistantId, showConversationList = false }: 
         } finally {
             setLoading(false);
             setIsTyping(false);
+            sendingRef.current = false;
         }
     };
 

@@ -26,6 +26,19 @@ export const CLIENTS: Record<string, any> = {
             { id: 'FIL-03', nome: 'Filial — Rio de Janeiro (RJ)' },
         ],
     },
+    // CNPJ de teste (preview / order flow) — mesmo estilo de mock gerenciado pela plataforma
+    '12345678000195': {
+        id: 'CUST-TEST',
+        razao_social: 'Cliente Teste LTDA',
+        fantasia: 'Cliente Teste',
+        documento: '12.345.678/0001-95',
+        status: 'ativo',
+        segmento: 'Varejo',
+        email: 'teste@qualy.com.br',
+        telefone: '(11) 99999-0000',
+        vendedor: { id: 'V-01', nome: 'Carlos Almeida' },
+        filiais: [{ id: 'FIL-01', nome: 'Matriz' }],
+    },
     '98765432000100': {
         id: 'CUST-002',
         razao_social: 'Padaria da Esquina EIRELI',

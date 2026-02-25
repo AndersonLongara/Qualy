@@ -217,7 +217,10 @@ export const toolsExecution: Record<string, (a: string | Record<string, unknown>
         const mock = getMockData(tid, aid, 'clientes');
         if (mock !== null) {
             const clientes = mock as Record<string, unknown>;
-            const client = clientes[digitsOnly];
+            // Mesma lógica do order-flow: chave exata ou variante CNPJ (ex.: plataforma "12345678195" e usuário 12345678000195)
+            const client =
+                clientes[digitsOnly] ??
+                (digitsOnly.length === 14 ? clientes[digitsOnly.replace(/00(\d{3})$/, '$1')] : undefined);
             if (client) return JSON.stringify(client);
             return 'Cliente não encontrado na base de dados.';
         }
