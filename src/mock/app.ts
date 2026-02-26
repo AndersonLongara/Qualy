@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
+import { productMatchesSearch } from '../core/productSearch';
 import { CLIENTS, TITULOS, PEDIDOS, ESTOQUE, PLANOS_PAGAMENTO } from './data';
 
 const app = express();
@@ -52,13 +53,13 @@ app.get('/v1/faturamento/pedidos', (req: Request, res: Response) => {
     res.json(result);
 });
 
-// 4. Estoque
+// 4. Estoque — busca flexível por tokens
 app.get('/v1/vendas/estoque', (req: Request, res: Response) => {
-    const busca = (req.query.busca as string || '').toLowerCase();
+    const busca = (req.query.busca as string || '').trim();
     const categoria = (req.query.categoria as string || '').toLowerCase();
     let result = ESTOQUE;
-    if (busca) result = result.filter(p => p.nome.toLowerCase().includes(busca) || p.sku.toLowerCase().includes(busca));
-    if (categoria) result = result.filter(p => p.categoria.toLowerCase() === categoria);
+    if (busca) result = result.filter((p: any) => productMatchesSearch(busca, p.nome ?? '', p.sku ?? ''));
+    if (categoria) result = result.filter((p: any) => (p.categoria || '').toLowerCase() === categoria);
     res.json(result);
 });
 

@@ -126,28 +126,43 @@ export default function ChatPage({ assistantId, showConversationList = false }: 
         const chatKey = storageChatKey(tid, sessionId);
         const agentKey = storageAgentKey(tid, sessionId);
 
-        // 1) Mensagens do localStorage
-        try {
-            const savedChat = localStorage.getItem(chatKey);
-            if (savedChat) {
-                const parsed = JSON.parse(savedChat) as Message[];
-                setMessages(Array.isArray(parsed) ? parsed : []);
-            } else {
-                setMessages([]);
-            }
-        } catch {
-            setMessages([]);
-        }
+        let forceNewSession = false;
 
-        // 2) Agente: localStorage > API (última execução) > prop
+        // 1) Agente: localStorage > API (última execução) > prop
         let resolved = false;
         try {
             const savedAgent = localStorage.getItem(agentKey)?.trim();
             if (savedAgent) {
-                setActiveAgentId(savedAgent);
-                resolved = true;
+                // Se estamos acessando um preview de um agente específico e a sessão antiga era com outro agente
+                if (assistantId && assistantId !== savedAgent && !showConversationList) {
+                    forceNewSession = true;
+                    const newId = Math.random().toString(36).substring(2, 8).toUpperCase();
+                    localStorage.setItem(STORAGE_SESSION_ID, newId);
+                    setSessionId(newId);
+                    setMessages([]);
+                    setActiveAgentId(assistantId);
+                    resolved = true;
+                } else {
+                    setActiveAgentId(savedAgent);
+                    resolved = true;
+                }
             }
         } catch { /* ignore */ }
+
+        // 2) Mensagens do localStorage (se não forçamos nova sessão)
+        if (!forceNewSession) {
+            try {
+                const savedChat = localStorage.getItem(chatKey);
+                if (savedChat) {
+                    const parsed = JSON.parse(savedChat) as Message[];
+                    setMessages(Array.isArray(parsed) ? parsed : []);
+                } else {
+                    setMessages([]);
+                }
+            } catch {
+                setMessages([]);
+            }
+        }
 
         if (!resolved && showConversationList) {
             const params = new URLSearchParams({ tenantId: tid, phone: sessionId, limit: '1' });
@@ -166,7 +181,7 @@ export default function ChatPage({ assistantId, showConversationList = false }: 
         } else if (!resolved) {
             setActiveAgentId(assistantId);
         }
-    }, [tenantId, sessionId]);
+    }, [tenantId, sessionId, assistantId, showConversationList]);
 
     // Persistência: salvar mensagens sempre que mudarem
     useEffect(() => {

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getConfig, getAssistantConfig, type AssistantApiConfig, type HandoffRoute, type ToolConfig } from '../../config/tenant';
+import { productMatchesSearch } from '../productSearch';
 
 /** Rotas padrão para o modo production (e fallback do tenant). */
 const DEFAULT_ROUTES = {
@@ -358,11 +359,10 @@ export const toolsExecution: Record<string, (a: string | Record<string, unknown>
         // #endregion
         if (mock !== null) {
             const estoque = mock as any[];
-            const buscaLower = busca.toLowerCase();
             let result = estoque;
-            if (buscaLower) {
+            if (busca?.trim()) {
                 try {
-                    result = result.filter((p) => p.nome?.toLowerCase().includes(buscaLower) || p.sku?.toLowerCase().includes(buscaLower));
+                    result = result.filter((p) => productMatchesSearch(busca, p.nome ?? '', p.sku ?? ''));
                 } catch (filterErr: any) {
                     // #region agent log
                     fetch('http://127.0.0.1:7520/ingest/e566106f-4ab4-40ab-8bfd-c703d470cd11',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'00cc2d'},body:JSON.stringify({sessionId:'00cc2d',hypothesisId:'H3',location:'tools.ts:consultar_estoque:filter',message:'filter threw',data:{error:filterErr?.message,stack:String(filterErr?.stack||'').substring(0,300)},timestamp:Date.now()})}).catch(()=>{});

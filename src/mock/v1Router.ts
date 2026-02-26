@@ -4,6 +4,7 @@
  * Permite trocar a implementação por API real sem alterar o restante do servidor.
  */
 import { Router, Request, Response } from 'express';
+import { productMatchesSearch } from '../core/productSearch';
 
 export interface V1RouterDeps {
     clients: Record<string, any>;
@@ -73,13 +74,13 @@ export function createV1Router(deps: V1RouterDeps): Router {
         res.json(result);
     });
 
-    // 4. Estoque
+    // 4. Estoque — busca flexível por tokens (ex.: "cp 2" e "cimento 50kg" encontram "Cimento CP-II 50kg")
     router.get('/vendas/estoque', (req: Request, res: Response) => {
-        const busca = (req.query.busca as string || '').toLowerCase();
+        const busca = (req.query.busca as string || '').trim();
         const categoria = (req.query.categoria as string || '').toLowerCase();
         let result = [...estoque];
-        if (busca) result = result.filter(p => p.nome.toLowerCase().includes(busca) || p.sku.toLowerCase().includes(busca));
-        if (categoria) result = result.filter(p => p.categoria.toLowerCase() === categoria);
+        if (busca) result = result.filter((p: any) => productMatchesSearch(busca, p.nome ?? '', p.sku ?? ''));
+        if (categoria) result = result.filter((p: any) => (p.categoria || '').toLowerCase() === categoria);
         res.json(result);
     });
 

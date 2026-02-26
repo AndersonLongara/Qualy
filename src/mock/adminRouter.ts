@@ -37,7 +37,7 @@ router.get('/tenants/:id', async (req: Request, res: Response) => {
     const id = paramId(req, 'id');
     if (!id) return res.status(400).json({ error: 'ID do tenant é obrigatório.' });
     try {
-        await ensureTenantLoaded(id);
+        await ensureTenantLoaded(id, true);
         const config = getTenantConfig(id);
         return res.json(config);
     } catch (err: any) {

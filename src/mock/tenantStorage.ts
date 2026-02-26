@@ -140,37 +140,58 @@ export function getTenantRaw(tenantId: string): Record<string, unknown> {
 // LEITURA/ESCRITA ASSÍNCRONA (Postgres + filesystem)
 // ─────────────────────────────────────────────────────────────────────────────
 
+const syncCache = new Map<string, number>();
+const SYNC_TTL_MS = 5000;
+
 /**
  * Garante que o tenant esteja disponível no filesystem (/tmp ou cwd).
- * Se não existir no filesystem, carrega do Postgres e escreve no /tmp.
+ * Se não existir no filesystem, ou se o forceSync for true, ou o TTL expirou, carrega do Postgres e escreve no /tmp.
  * Deve ser chamada ANTES de qualquer operação síncrona sobre o tenant.
  */
-export async function ensureTenantLoaded(tenantId: string): Promise<void> {
+export async function ensureTenantLoaded(tenantId: string, forceSync = false): Promise<void> {
     const id = (tenantId || '').trim() || 'default';
-    if (readFilePath(id)) return;  // Já existe no filesystem, ok
 
-    // #region agent log
-    fetch('http://127.0.0.1:7520/ingest/e566106f-4ab4-40ab-8bfd-c703d470cd11',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'436ca8'},body:JSON.stringify({sessionId:'436ca8',location:'tenantStorage.ts:ensureTenantLoaded',message:'não encontrado no FS, buscando no Postgres',data:{id,isDbEnabled:!!(process.env.POSTGRES_URL)},timestamp:Date.now(),hypothesisId:'DB-B'})}).catch(()=>{});
-    // #endregion
-    const raw = await getTenantConfigFromDb(id);
-    if (!raw) {
-        // #region agent log
-        fetch('http://127.0.0.1:7520/ingest/e566106f-4ab4-40ab-8bfd-c703d470cd11',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'436ca8'},body:JSON.stringify({sessionId:'436ca8',location:'tenantStorage.ts:ensureTenantLoaded',message:'não encontrado no Postgres também',data:{id},timestamp:Date.now(),hypothesisId:'DB-B'})}).catch(()=>{});
-        // #endregion
-        return;  // Não existe no DB também
+    const now = Date.now();
+    const lastSync = syncCache.get(id) || 0;
+    const isExpired = now - lastSync > SYNC_TTL_MS;
+
+    const hasLocalFile = !!readFilePath(id);
+    const shouldFetch = forceSync || isExpired || !hasLocalFile;
+
+    if (!shouldFetch && hasLocalFile) {
+        return; // Já existe no filesystem e cache válido
     }
+
+    // Marca a sincronização para evitar buscas simultâneas excessivas
+    syncCache.set(id, now);
+
     // #region agent log
-    fetch('http://127.0.0.1:7520/ingest/e566106f-4ab4-40ab-8bfd-c703d470cd11',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'436ca8'},body:JSON.stringify({sessionId:'436ca8',location:'tenantStorage.ts:ensureTenantLoaded',message:'encontrado no Postgres, semeando /tmp',data:{id},timestamp:Date.now(),hypothesisId:'DB-B'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7520/ingest/e566106f-4ab4-40ab-8bfd-c703d470cd11', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '436ca8' }, body: JSON.stringify({ sessionId: '436ca8', location: 'tenantStorage.ts:ensureTenantLoaded', message: 'nao tem local ou expirado/forçado, buscando no Postgres', data: { id, isDbEnabled: !!(process.env.POSTGRES_URL) }, timestamp: Date.now(), hypothesisId: 'DB-B' }) }).catch(() => { });
     // #endregion
 
-    // Escreve no /tmp para que getConfig() possa ler sincronamente
-    const wb = writableBase();
-    const dir = id === 'default' ? path.join(wb, CONFIG_DIR) : tenantsDir(wb);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    const filePath = id === 'default' ? defaultFilePath(wb) : tenantFilePath(wb, id);
-    fs.writeFileSync(filePath, JSON.stringify(raw, null, 2), 'utf8');
-    __resetConfigCache();
-    console.log(`[tenantStorage] Tenant "${id}" carregado do Postgres → ${filePath}`);
+    try {
+        const raw = await getTenantConfigFromDb(id);
+        if (!raw) {
+            // #region agent log
+            fetch('http://127.0.0.1:7520/ingest/e566106f-4ab4-40ab-8bfd-c703d470cd11', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '436ca8' }, body: JSON.stringify({ sessionId: '436ca8', location: 'tenantStorage.ts:ensureTenantLoaded', message: 'não encontrado no Postgres também', data: { id }, timestamp: Date.now(), hypothesisId: 'DB-B' }) }).catch(() => { });
+            // #endregion
+            return;  // Não existe no DB também
+        }
+        // #region agent log
+        fetch('http://127.0.0.1:7520/ingest/e566106f-4ab4-40ab-8bfd-c703d470cd11', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '436ca8' }, body: JSON.stringify({ sessionId: '436ca8', location: 'tenantStorage.ts:ensureTenantLoaded', message: 'encontrado no Postgres, semeando /tmp', data: { id }, timestamp: Date.now(), hypothesisId: 'DB-B' }) }).catch(() => { });
+        // #endregion
+
+        // Escreve no /tmp para que getConfig() possa ler sincronamente
+        const wb = writableBase();
+        const dir = id === 'default' ? path.join(wb, CONFIG_DIR) : tenantsDir(wb);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        const filePath = id === 'default' ? defaultFilePath(wb) : tenantFilePath(wb, id);
+        fs.writeFileSync(filePath, JSON.stringify(raw, null, 2), 'utf8');
+        __resetConfigCache();
+        console.log(`[tenantStorage] Tenant "${id}" sincronizado do Postgres → ${filePath}`);
+    } catch (err) {
+        console.warn(`[tenantStorage] Erro ao sincronizar tenant "${id}" do DB:`, err);
+    }
 }
 
 /**
@@ -217,16 +238,16 @@ export async function writeTenant(tenantId: string, payload: Record<string, unkn
 
     // 2. Persiste no Postgres (storage duradouro em produção)
     // #region agent log
-    fetch('http://127.0.0.1:7520/ingest/e566106f-4ab4-40ab-8bfd-c703d470cd11',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'436ca8'},body:JSON.stringify({sessionId:'436ca8',location:'tenantStorage.ts:writeTenant',message:'antes upsertTenantConfig',data:{id,isDbEnabled:!!(process.env.POSTGRES_URL),VERCEL:process.env.VERCEL,filePath,fsWriteOk:true},timestamp:Date.now(),hypothesisId:'DB-A'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7520/ingest/e566106f-4ab4-40ab-8bfd-c703d470cd11', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '436ca8' }, body: JSON.stringify({ sessionId: '436ca8', location: 'tenantStorage.ts:writeTenant', message: 'antes upsertTenantConfig', data: { id, isDbEnabled: !!(process.env.POSTGRES_URL), VERCEL: process.env.VERCEL, filePath, fsWriteOk: true }, timestamp: Date.now(), hypothesisId: 'DB-A' }) }).catch(() => { });
     // #endregion
     try {
         await upsertTenantConfig(id, toWrite);
         // #region agent log
-        fetch('http://127.0.0.1:7520/ingest/e566106f-4ab4-40ab-8bfd-c703d470cd11',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'436ca8'},body:JSON.stringify({sessionId:'436ca8',location:'tenantStorage.ts:writeTenant',message:'upsertTenantConfig SUCCESS',data:{id},timestamp:Date.now(),hypothesisId:'DB-A'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7520/ingest/e566106f-4ab4-40ab-8bfd-c703d470cd11', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '436ca8' }, body: JSON.stringify({ sessionId: '436ca8', location: 'tenantStorage.ts:writeTenant', message: 'upsertTenantConfig SUCCESS', data: { id }, timestamp: Date.now(), hypothesisId: 'DB-A' }) }).catch(() => { });
         // #endregion
     } catch (dbErr: any) {
         // #region agent log
-        fetch('http://127.0.0.1:7520/ingest/e566106f-4ab4-40ab-8bfd-c703d470cd11',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'436ca8'},body:JSON.stringify({sessionId:'436ca8',location:'tenantStorage.ts:writeTenant',message:'upsertTenantConfig FAILED',data:{id,error:dbErr.message},timestamp:Date.now(),hypothesisId:'DB-A'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7520/ingest/e566106f-4ab4-40ab-8bfd-c703d470cd11', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '436ca8' }, body: JSON.stringify({ sessionId: '436ca8', location: 'tenantStorage.ts:writeTenant', message: 'upsertTenantConfig FAILED', data: { id, error: dbErr.message }, timestamp: Date.now(), hypothesisId: 'DB-A' }) }).catch(() => { });
         // #endregion
         console.warn('[tenantStorage] Falha ao salvar tenant no Postgres:', dbErr.message);
         // Não relança — o write no filesystem foi bem-sucedido
