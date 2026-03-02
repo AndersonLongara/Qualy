@@ -24,7 +24,7 @@ const DEFAULT_ORDER_FLOW_MESSAGES: Record<string, string> = {
     onlyNUnitsAvailable: 'Infelizmente só temos **{{available}} unidades** disponíveis de {{productName}}.\n\nDeseja prosseguir com as {{available}} unidades disponíveis?',
     confirmOrder: 'Olá, **{{customerName}}**!\n\nResumo do pedido:\n\n{{cartItems}}\n\n💰 **Total: R$ {{total}}**\n\nConfirma o pedido?',
     confirmOrderQuantity: 'Resumo do pedido:\n\n{{cartItems}}\n\n💰 **Total: R$ {{total}}**\n👤 Cliente: **{{customerName}}**\n\nConfirma o pedido?',
-    itemAddedToCart: '✅ **{{productName}}** × {{quantity}} adicionado ao carrinho.\n\n🛒 Carrinho: {{itemCount}} produto(s) — subtotal R$ {{subtotal}}\n\nDeseja **adicionar mais** algum produto ou **finalizar** o pedido?',
+    itemAddedToCart: '✅ **{{productName}}** × {{quantity}} un. adicionado ao carrinho!\n\n🛒 *{{itemCount}} produto(s) — subtotal R$ {{subtotal}}*\n\nDeseja **adicionar mais** algum produto ou **finalizar** o pedido?\n_(Ou já pode digitar seu CNPJ/CPF para finalizar agora)_',
     orderSuccess: 'Perfeito! Seu pedido foi registrado com sucesso.\n\n**Número do pedido:** {{pedido_id}}\n\n{{mensagem}} 🙏',
     orderErrorFallback: 'Seu pedido foi anotado e encaminhado para nossa equipe finalizar. Em caso de dúvida, informe que você já confirmou o pedido.\n\nObrigada pela preferência! 🙏',
     orderCancelled: 'Pedido cancelado. Se precisar de algo mais, estou à disposição!',
@@ -320,10 +320,41 @@ export const processOrderFlow = async (
     // ── STATE: awaiting_more_or_checkout ──
     if (s.state === 'awaiting_more_or_checkout') {
         const msgLower = message.toLowerCase();
-        const wantsMore = intent === 'CONFIRM'
-            || /adicionar|mais\s+um|mais\s+produto|outro\s+produto|quero\s+mais|sim[,.]?\s*mais|sim[,.]?\s*adicion/i.test(msgLower);
-        const wantsCheckout = intent === 'DENY'
-            || /finalizar|conclu|terminar|só\s*(isso|esses|esses?)|nada\s*mais|não\s*quero\s*mais|^(não|nao)[,.]?\s*$|pode\s*finalizar|fechar\s*(o\s*)?pedido/i.test(msgLower);
+
+        // Detect inline CNPJ/CPF — user typed their doc directly to checkout
+        const inlineDoc = extractDocument(message);
+        if (inlineDoc) {
+            console.log(`[ORDER] Doc inline em awaiting_more_or_checkout: ${inlineDoc}`);
+            const validation = await validateCustomer(inlineDoc, tenantId, assistantId);
+            if (!validation.valid) {
+                if (validation.blocked) {
+                    return {
+                        reply: applyTemplate(msg.customerBlocked, { name: validation.name }),
+                        newState: { ...s, state: 'idle', items: [] },
+                    };
+                }
+                return { reply: msg.customerNotFound, newState: s };
+            }
+            s.document = inlineDoc;
+            s.customerName = validation.name || null;
+            s.state = 'awaiting_confirmation';
+            const cartItems = buildCartText(s.items);
+            const total = cartTotal(s.items).toFixed(2);
+            return {
+                reply: applyTemplate(msg.confirmOrder, {
+                    cartItems,
+                    total,
+                    customerName: s.customerName ?? '',
+                    productName: s.items[0]?.nome ?? '',
+                    quantity: s.items[0]?.quantidade ?? '',
+                }),
+                newState: s,
+            };
+        }
+
+        const wantsMore = /adicionar|mais\s*um|mais\s*produto|outro\s*produto|quero\s+mais|sim[,.]?\s*mais|sim[,.]?\s*adicion|continuar\s*comprando/i.test(msgLower);
+        const wantsCheckout = intent === 'CONFIRM' || intent === 'DENY'
+            || /finalizar|conclu|terminar|só\s*(isso|esses?)|nada\s*mais|não\s*quero\s*mais|^(não|nao)[,.]?\s*$|pode\s*finalizar|fechar\s*(o\s*)?pedido|encerrar|pronto|s[oó]\s*isso/i.test(msgLower);
 
         if (wantsCheckout) {
             // Proceed to CPF collection if not yet validated

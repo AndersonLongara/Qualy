@@ -32,12 +32,13 @@ const INTENT_RULES: IntentRule[] = [
             /\b\d{14}\b/,                                     // CNPJ sem formatação
         ],
     },
-    // "sim quero 2 unidades" / "quero N unidades" — antes de CONFIRM e START_ORDER
+    // "sim quero 2 unidades" / "quero N unidades" / "2" / "me manda 3" — antes de CONFIRM e START_ORDER
     {
         intent: 'START_ORDER_WITH_QUANTITY',
         patterns: [
-            /(sim\s*,?\s*)?(quero|levar|desejo|preciso)\s+\d+\s*unidades?/i,
-            /\d+\s*unidades?\s*(do\s+)?(produto|esse)?/i,
+            /(sim\s*,?\s*)?(quero|levar|desejo|preciso|me\s+manda|manda)\s+\d+/i,
+            /\d+\s*(unidades?|un\.?|unid\.?|pç|peças?|caixas?|kg|sacos?|fardos?)/i,
+            /^\d+\s*$/,                                   // resposta pura de número
         ],
     },
     {
