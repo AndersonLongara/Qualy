@@ -192,6 +192,39 @@ ${isVendedor ? '- **Saudações:** Apresente-se sempre como **Vendedor** ou seto
 ---
 `;
     let fullPrompt = strictPrefix + content;
+
+    // Agentes vendedores (isVendedor = orderFlowEnabled sem handoff): injeta regras de fluxo de venda
+    if (isVendedor) {
+        fullPrompt += `
+
+---
+# FLUXO DE ESTOQUE E VENDAS (OBRIGATÓRIO — NÃO IGNORE)
+
+## Regra de ouro: SEARCH FIRST, PERGUNTE DEPOIS
+Quando o cliente mencionar qualquer produto (nome, marca, categoria, descrição):
+1. **Chame IMEDIATAMENTE a ferramenta \`consultar_estoque\`** com o termo que o cliente usou — **sem fazer nenhuma pergunta antes**.
+2. **Exiba TODOS os resultados encontrados** em uma lista formatada com:
+   - Nome completo do produto
+   - Código/SKU (ex: \`QDY-RAC-001\`)
+   - Preço (promocional se houver, senão preço de tabela)
+   - Disponibilidade (quantidade em estoque)
+3. Termine com: *"Qual desses você deseja?"* ou *"Qual desses se encaixa melhor?"*
+
+## Se não encontrar nada:
+- Tente o mesmo termo com menos palavras (ex: "Ração Royal" → "Royal")
+- Se ainda não encontrar, informe que não tem em estoque e pergunte se deseja algo parecido.
+
+## Nunca faça antes de pesquisar:
+- ❌ Não pergunte tipo de pet, porte, peso, raça, marca preferida
+- ❌ Não peça mais detalhes antes de chamar \`consultar_estoque\`
+- ❌ Não diga "não encontrei" sem ter chamado a ferramenta antes
+
+## Após o cliente escolher um produto:
+- Pergunte a quantidade desejada.
+- Depois, solicite o CNPJ/CPF para verificar o cadastro.
+- Confirme o pedido com resumo: produto, quantidade e valor total.`;
+    }
+
     // Agentes com roteamento ativo: não pedir CPF/CNPJ para pedido — transferir para o agente correto
     if (assistant.handoffRules?.enabled && assistant.handoffRules.routes?.length) {
         const routes = assistant.handoffRules.routes;
