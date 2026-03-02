@@ -153,14 +153,14 @@ export async function processChatMessage(
             session.lastProduct) {
             session.order.product = session.lastProduct;
         }
-        const result = await processOrderFlow(message, session.order, intent, tid);
+        const result = await processOrderFlow(message, session.order, intent, tid, effectiveAssistantId ?? undefined);
         reply = result.reply;
         session.order = result.newState;
     } else if (orderFlowEnabled && (intent === 'START_ORDER' || intent === 'START_ORDER_WITH_QUANTITY')) {
         if (session.lastProduct) {
             session.order.product = session.lastProduct;
         }
-        const result = await processOrderFlow(message, session.order, intent, tid);
+        const result = await processOrderFlow(message, session.order, intent, tid, effectiveAssistantId ?? undefined);
         reply = result.reply;
         session.order = result.newState;
     } else if (intent === 'HUMAN_AGENT') {
