@@ -221,8 +221,14 @@ Quando o cliente mencionar qualquer produto (nome, marca, categoria, descrição
 
 ## Após o cliente escolher um produto:
 - Pergunte a quantidade desejada.
-- Depois, solicite o CNPJ/CPF para verificar o cadastro.
-- Confirme o pedido com resumo: produto, quantidade e valor total.`;
+- O sistema adicionará o item ao carrinho automaticamente.
+- Depois, pergunte se o cliente quer **adicionar mais produtos** ou **finalizar o pedido**.
+- Se quiser mais: pesquise o próximo produto com \`consultar_estoque\` (mesmo fluxo).
+- Quando finalizar: solicite o CNPJ/CPF, depois confirme o pedido com resumo de TODOS os itens e total.
+
+## Carrinho multi-produto:
+- O cliente pode adicionar quantos produtos quiser antes de fechar o pedido.
+- O CNPJ/CPF é pedido UMA VEZ, apenas ao finalizar, não a cada produto.`;
     }
 
     // Agentes com roteamento ativo: não pedir CPF/CNPJ para pedido — transferir para o agente correto

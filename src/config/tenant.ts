@@ -89,6 +89,8 @@ export interface OrderFlowMessages {
     orderCancelled?: string | null;
     /** Peça confirmação sim/não. */
     confirmYesNo?: string | null;
+    /** Item adicionado ao carrinho. Templates: {{productName}}, {{quantity}}, {{itemCount}}, {{subtotal}}. */
+    itemAddedToCart?: string | null;
 }
 
 /** Configuração de um agente de IA dentro de um tenant (plano: múltiplos agentes por empresa). */
@@ -215,6 +217,7 @@ function normalizeOrderFlowMessages(raw: unknown): OrderFlowMessages | null {
     if (optString(o.orderErrorFallback) != null) m.orderErrorFallback = optString(o.orderErrorFallback);
     if (optString(o.orderCancelled) != null) m.orderCancelled = optString(o.orderCancelled);
     if (optString(o.confirmYesNo) != null) m.confirmYesNo = optString(o.confirmYesNo);
+    if (optString(o.itemAddedToCart) != null) m.itemAddedToCart = optString(o.itemAddedToCart);
     return Object.keys(m).length > 0 ? m : null;
 }
 

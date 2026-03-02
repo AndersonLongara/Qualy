@@ -147,6 +147,12 @@ export async function processChatMessage(
     let handledByLLM = false;
 
     if (orderFlowEnabled && session.order.state !== 'idle' && intent !== 'STOCK_QUERY') {
+        // When adding more items to cart, sync the newly-found product into the order session
+        if (session.order.state === 'awaiting_more_or_checkout' &&
+            (intent === 'START_ORDER' || intent === 'START_ORDER_WITH_QUANTITY') &&
+            session.lastProduct) {
+            session.order.product = session.lastProduct;
+        }
         const result = await processOrderFlow(message, session.order, intent, tid);
         reply = result.reply;
         session.order = result.newState;

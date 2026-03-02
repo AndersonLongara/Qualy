@@ -2,6 +2,11 @@
  * Order Flow State Machine — gerencia o fluxo de pedido em código,
  * sem depender do LLM para lógica de negócio.
  * Mensagens são configuráveis via tenant.prompt.orderFlowMessages (painel).
+ *
+ * Suporta carrinho multi-produto:
+ *   idle → awaiting_quantity → awaiting_more_or_checkout
+ *        ↗ (usuário quer adicionar mais → idle novamente, LLM busca próximo produto)
+ *   awaiting_more_or_checkout → awaiting_cpf → awaiting_confirmation → POST todos os itens → reset
  */
 import axios from 'axios';
 import { getConfig, getAssistantConfig, type OrderFlowMessages } from '../../config/tenant';
@@ -10,17 +15,18 @@ import { CLIENTS as DEFAULT_MOCK_CLIENTS } from '../../mock/data';
 
 const DEFAULT_ORDER_FLOW_MESSAGES: Record<string, string> = {
     askProduct: 'Para fazer um pedido, primeiro preciso saber qual produto deseja. Poderia informar o nome ou código?',
-    askDocument: 'Ótimo! Você deseja fazer um pedido de **{{productName}}**.\n\nPara prosseguir, preciso que informe seu CPF ou CNPJ.',
-    askDocumentWithQuantity: 'Ótimo! Você quer **{{qty}} unidades** de **{{productName}}** (total R$ {{total}}).\n\nPara prosseguir, preciso que informe seu CPF ou CNPJ.',
+    askDocument: 'Para finalizar o pedido, preciso do seu CPF ou CNPJ.',
+    askDocumentWithQuantity: 'Para finalizar o pedido, preciso do seu CPF ou CNPJ.',
     invalidDocument: 'Não consegui identificar um CPF ou CNPJ válido. Por favor, informe um CPF (11 dígitos) ou CNPJ (14 dígitos).',
     customerNotFound: 'Não encontramos um cadastro ativo com este documento. Verifique o número informado ou entre em contato com nosso atendimento.',
     customerBlocked: 'O cadastro de **{{name}}** está bloqueado. Por favor, entre em contato com o setor financeiro para regularizar sua situação.',
-    askQuantity: 'Cadastro validado! Olá, **{{customerName}}**.\n\nProduto: **{{productName}}**\nPreço unitário: **R$ {{preco}}**\nEstoque disponível: **{{available}} unidades**\n\nQual a quantidade desejada?',
+    askQuantity: 'Produto: **{{productName}}**\nPreço unitário: **R$ {{preco}}**\nEstoque disponível: **{{available}} unidades**\n\nQual a quantidade desejada?',
     onlyNUnitsAvailable: 'Infelizmente só temos **{{available}} unidades** disponíveis de {{productName}}.\n\nDeseja prosseguir com as {{available}} unidades disponíveis?',
-    confirmOrder: 'Cadastro validado! Olá, **{{customerName}}**.\n\nResumo do pedido:\n\n📦 **{{productName}}** × {{quantity}} unidades\n💰 Total: **R$ {{total}}**\n👤 Cliente: **{{customerName}}**\n\nConfirma o pedido?',
-    confirmOrderQuantity: 'Resumo do pedido:\n\n📦 **{{productName}}** × {{quantity}} unidades\n💰 Total: **R$ {{total}}**\n👤 Cliente: **{{customerName}}**\n\nConfirma o pedido?',
-    orderSuccess: 'Perfeito! Seu pedido de **{{quantity}} unidades** de **{{productName}}** foi registrado.\n\n**Número do pedido:** {{pedido_id}}\n\n{{mensagem}} 🙏',
-    orderErrorFallback: 'Seu pedido de **{{quantity}} unidades** de **{{productName}}** foi anotado e encaminhado para nossa equipe finalizar. Em caso de dúvida, informe que você já confirmou o pedido.\n\nObrigada pela preferência! 🙏',
+    confirmOrder: 'Olá, **{{customerName}}**!\n\nResumo do pedido:\n\n{{cartItems}}\n\n💰 **Total: R$ {{total}}**\n\nConfirma o pedido?',
+    confirmOrderQuantity: 'Resumo do pedido:\n\n{{cartItems}}\n\n💰 **Total: R$ {{total}}**\n👤 Cliente: **{{customerName}}**\n\nConfirma o pedido?',
+    itemAddedToCart: '✅ **{{productName}}** × {{quantity}} adicionado ao carrinho.\n\n🛒 Carrinho: {{itemCount}} produto(s) — subtotal R$ {{subtotal}}\n\nDeseja **adicionar mais** algum produto ou **finalizar** o pedido?',
+    orderSuccess: 'Perfeito! Seu pedido foi registrado com sucesso.\n\n**Número do pedido:** {{pedido_id}}\n\n{{mensagem}} 🙏',
+    orderErrorFallback: 'Seu pedido foi anotado e encaminhado para nossa equipe finalizar. Em caso de dúvida, informe que você já confirmou o pedido.\n\nObrigada pela preferência! 🙏',
     orderCancelled: 'Pedido cancelado. Se precisar de algo mais, estou à disposição!',
     confirmYesNo: 'Por favor, confirme com **Sim** para prosseguir ou **Não** para cancelar o pedido.',
 };
@@ -33,7 +39,8 @@ function getOrderFlowMessages(tenantId?: string): Record<string, string> {
     const keys: (keyof OrderFlowMessages)[] = [
         'askProduct', 'askDocument', 'askDocumentWithQuantity', 'invalidDocument', 'customerNotFound', 'customerBlocked',
         'askQuantity', 'onlyNUnitsAvailable', 'confirmOrder', 'orderSuccess', 'orderErrorFallback', 'orderCancelled', 'confirmYesNo',
-    ];
+        'itemAddedToCart',
+    ] as (keyof OrderFlowMessages)[];
     for (const k of keys) {
         const v = custom[k];
         if (typeof v === 'string' && v.trim()) out[k] = v.trim();
@@ -68,14 +75,25 @@ function getRoute(tenantId: string, assistantId: string | undefined, key: 'clien
 
 export type OrderState =
     | 'idle'
+    | 'awaiting_more_or_checkout'
     | 'awaiting_cpf'
     | 'awaiting_quantity'
     | 'awaiting_confirmation'
     | 'completed';
 
+/** A single line-item in the cart */
+export interface CartItem {
+    sku: string;
+    nome: string;
+    quantidade: number;
+    preco_unitario: number;
+}
+
 export interface OrderSession {
     state: OrderState;
-    /** Product data from last stock query (if any) */
+    /** Accumulated cart items (multi-product support) */
+    items: CartItem[];
+    /** Currently selected product (set from last stock query) */
     product: {
         nome: string;
         sku: string;
@@ -85,7 +103,7 @@ export interface OrderSession {
     } | null;
     /** Customer document (CPF/CNPJ) */
     document: string | null;
-    /** Requested quantity */
+    /** Requested quantity for the current product */
     quantity: number | null;
     /** Customer name (after validation) */
     customerName: string | null;
@@ -93,6 +111,7 @@ export interface OrderSession {
 
 export const createOrderSession = (): OrderSession => ({
     state: 'idle',
+    items: [],
     product: null,
     document: null,
     quantity: null,
@@ -159,6 +178,18 @@ const validateCustomer = async (document: string, tenantId?: string, assistantId
     }
 };
 
+/** Formats cart items as a markdown list */
+function buildCartText(items: CartItem[]): string {
+    return items
+        .map((item) => `📦 **${item.nome}** × ${item.quantidade} un. — R$ ${(item.preco_unitario * item.quantidade).toFixed(2)}`)
+        .join('\n');
+}
+
+/** Sums the total price of all cart items */
+function cartTotal(items: CartItem[]): number {
+    return items.reduce((acc, item) => acc + item.preco_unitario * item.quantidade, 0);
+}
+
 interface FlowResult {
     reply: string;
     newState: OrderSession;
@@ -176,11 +207,16 @@ export const processOrderFlow = async (
     tenantId?: string,
     assistantId?: string
 ): Promise<FlowResult> => {
-    const s = { ...session };
+    const s: OrderSession = { ...session, items: session.items ?? [] };
     const msg = getOrderFlowMessages(tenantId);
-    console.log(`[ORDER] state=${s.state} | intent=${intent} | msg="${message.substring(0, 30)}"`);
+    console.log(`[ORDER] state=${s.state} | intent=${intent} | items=${s.items.length} | msg="${message.substring(0, 30)}"`); 
 
-    // ── STATE: idle → Start order (com ou sem quantidade) ──
+    // When in cart mode and user initiates a new product order, reset to idle so the item-add logic runs
+    if (s.state === 'awaiting_more_or_checkout' && (intent === 'START_ORDER' || intent === 'START_ORDER_WITH_QUANTITY')) {
+        s.state = 'idle';
+    }
+
+    // ── STATE: idle → Start order ──
     if (s.state === 'idle' || intent === 'START_ORDER' || intent === 'START_ORDER_WITH_QUANTITY') {
         if (!s.product) {
             return {
@@ -188,32 +224,142 @@ export const processOrderFlow = async (
                 newState: { ...s, state: 'idle' },
             };
         }
-        // "quero N unidades" / "sim quero 2 unidades": já define quantidade e pede CPF
+
+        // "quero N unidades": parse qty immediately, add to cart, then ask for more or checkout
         if (intent === 'START_ORDER_WITH_QUANTITY') {
             const qty = parseQuantityFromOrderMessage(message);
-            if (qty != null) {
+            if (qty != null && qty > 0) {
                 const available = s.product.estoque_disponivel;
+                const finalQty = Math.min(qty, available);
+                const preco = s.product.preco_promocional || s.product.preco_unitario;
+
                 if (qty > available) {
+                    // Will be confirmed (available units) in next message
                     s.quantity = available;
                     s.state = 'awaiting_confirmation';
+                    // Ask for stock-limit confirmation before adding
                     return {
                         reply: applyTemplate(msg.onlyNUnitsAvailable, { available, productName: s.product.nome }),
                         newState: s,
                     };
                 }
-                s.quantity = qty;
-                s.state = 'awaiting_cpf';
-                const preco = s.product.preco_promocional || s.product.preco_unitario;
-                const total = (preco * qty).toFixed(2);
+
+                // Add item to cart
+                s.items = [...s.items, { sku: s.product.sku, nome: s.product.nome, quantidade: finalQty, preco_unitario: preco }];
+                const subtotal = cartTotal(s.items).toFixed(2);
+                s.quantity = null;
+                s.product = null;
+                s.state = 'awaiting_more_or_checkout';
                 return {
-                    reply: applyTemplate(msg.askDocumentWithQuantity, { qty, productName: s.product.nome, total }),
+                    reply: applyTemplate(msg.itemAddedToCart || '✅ **{{productName}}** × {{quantity}} adicionado.\n\nDeseja adicionar mais algum produto ou **finalizar** o pedido?', {
+                        productName: s.items[s.items.length - 1].nome,
+                        quantity: finalQty,
+                        itemCount: s.items.length,
+                        subtotal,
+                    }),
                     newState: s,
                 };
             }
         }
-        s.state = 'awaiting_cpf';
+
+        // Ask quantity for selected product
+        s.state = 'awaiting_quantity';
+        const preco = s.product.preco_promocional || s.product.preco_unitario;
         return {
-            reply: applyTemplate(msg.askDocument, { productName: s.product.nome }),
+            reply: applyTemplate(msg.askQuantity, {
+                productName: s.product.nome,
+                preco: preco.toFixed(2),
+                available: s.product.estoque_disponivel,
+                customerName: s.customerName ?? '',
+            }),
+            newState: s,
+        };
+    }
+
+    // ── STATE: awaiting_quantity ──
+    if (s.state === 'awaiting_quantity') {
+        const qty = parseInt(message.replace(/\D/g, ''), 10);
+        if (isNaN(qty) || qty <= 0) {
+            return {
+                reply: 'Por favor, informe uma quantidade válida (número inteiro positivo).',
+                newState: s,
+            };
+        }
+
+        const available = s.product!.estoque_disponivel;
+        const preco = s.product!.preco_promocional || s.product!.preco_unitario;
+
+        if (qty > available) {
+            // Offer max available before adding
+            s.quantity = available;
+            s.state = 'awaiting_confirmation';
+            return {
+                reply: applyTemplate(msg.onlyNUnitsAvailable, { available, productName: s.product!.nome }),
+                newState: s,
+            };
+        }
+
+        // Add item to cart
+        s.items = [...s.items, { sku: s.product!.sku, nome: s.product!.nome, quantidade: qty, preco_unitario: preco }];
+        const subtotal = cartTotal(s.items).toFixed(2);
+        s.quantity = null;
+        s.product = null;
+        s.state = 'awaiting_more_or_checkout';
+
+        return {
+            reply: applyTemplate(msg.itemAddedToCart || '✅ **{{productName}}** × {{quantity}} adicionado.\n\nDeseja adicionar mais algum produto ou **finalizar** o pedido?', {
+                productName: s.items[s.items.length - 1].nome,
+                quantity: qty,
+                itemCount: s.items.length,
+                subtotal,
+            }),
+            newState: s,
+        };
+    }
+
+    // ── STATE: awaiting_more_or_checkout ──
+    if (s.state === 'awaiting_more_or_checkout') {
+        const msgLower = message.toLowerCase();
+        const wantsMore = intent === 'CONFIRM'
+            || /adicionar|mais\s+um|mais\s+produto|outro\s+produto|quero\s+mais|sim[,.]?\s*mais|sim[,.]?\s*adicion/i.test(msgLower);
+        const wantsCheckout = intent === 'DENY'
+            || /finalizar|conclu|terminar|só\s*(isso|esses|esses?)|nada\s*mais|não\s*quero\s*mais|^(não|nao)[,.]?\s*$|pode\s*finalizar|fechar\s*(o\s*)?pedido/i.test(msgLower);
+
+        if (wantsCheckout) {
+            // Proceed to CPF collection if not yet validated
+            if (s.document && s.customerName) {
+                // Already have customer data — go straight to confirmation
+                s.state = 'awaiting_confirmation';
+                const cartItems = buildCartText(s.items);
+                const total = cartTotal(s.items).toFixed(2);
+                return {
+                    reply: applyTemplate(msg.confirmOrderQuantity || msg.confirmOrder, {
+                        cartItems,
+                        total,
+                        customerName: s.customerName,
+                    }),
+                    newState: s,
+                };
+            }
+            s.state = 'awaiting_cpf';
+            return {
+                reply: msg.askDocument,
+                newState: s,
+            };
+        }
+
+        if (wantsMore) {
+            // Return to idle so the LLM takes over for the next product search
+            s.state = 'idle';
+            return {
+                reply: 'Claro! Pode pesquisar o próximo produto. Quando encontrar, é só dizer a quantidade e eu adiciono ao carrinho. 🛒',
+                newState: s,
+            };
+        }
+
+        // Unknown response: re-prompt
+        return {
+            reply: 'Deseja **adicionar mais** algum produto ou **finalizar** o pedido?\n\nResponda "adicionar mais" ou "finalizar".',
             newState: s,
         };
     }
@@ -235,7 +381,7 @@ export const processOrderFlow = async (
             if (validation.blocked) {
                 return {
                     reply: applyTemplate(msg.customerBlocked, { name: validation.name }),
-                    newState: { ...s, state: 'idle' },
+                    newState: { ...s, state: 'idle', items: [] },
                 };
             }
             return {
@@ -246,66 +392,19 @@ export const processOrderFlow = async (
 
         s.document = doc;
         s.customerName = validation.name || null;
-
-        const preco = s.product!.preco_promocional || s.product!.preco_unitario;
-        // Se quantidade já foi definida (ex.: "sim quero 2 unidades"), vai direto para confirmação
-        if (s.quantity != null && s.quantity > 0) {
-            const total = (preco * s.quantity).toFixed(2);
-            s.state = 'awaiting_confirmation';
-            return {
-                reply: applyTemplate(msg.confirmOrder, {
-                    productName: s.product!.nome,
-                    quantity: s.quantity,
-                    total,
-                    customerName: s.customerName ?? '',
-                }),
-                newState: s,
-            };
-        }
-        s.state = 'awaiting_quantity';
-        return {
-            reply: applyTemplate(msg.askQuantity, {
-                productName: s.product!.nome,
-                preco: preco.toFixed(2),
-                available: s.product!.estoque_disponivel,
-                customerName: s.customerName ?? '',
-            }),
-            newState: s,
-        };
-    }
-
-    // ── STATE: awaiting_quantity ──
-    if (s.state === 'awaiting_quantity') {
-        const qty = parseInt(message.replace(/\D/g, ''), 10);
-        if (isNaN(qty) || qty <= 0) {
-            return {
-                reply: 'Por favor, informe uma quantidade válida (número inteiro positivo).',
-                newState: s,
-            };
-        }
-
-        const available = s.product!.estoque_disponivel;
-
-        if (qty > available) {
-            s.quantity = available;
-            s.state = 'awaiting_confirmation';
-            return {
-                reply: applyTemplate(msg.onlyNUnitsAvailable, { available, productName: s.product!.nome }),
-                newState: s,
-            };
-        }
-
-        s.quantity = qty;
-        const preco = s.product!.preco_promocional || s.product!.preco_unitario;
-        const total = (preco * qty).toFixed(2);
         s.state = 'awaiting_confirmation';
 
+        const cartItems = buildCartText(s.items);
+        const total = cartTotal(s.items).toFixed(2);
+
         return {
-            reply: applyTemplate(msg.confirmOrderQuantity || msg.confirmOrder, {
-                productName: s.product!.nome,
-                quantity: qty,
+            reply: applyTemplate(msg.confirmOrder, {
+                cartItems,
                 total,
                 customerName: s.customerName ?? '',
+                // Legacy single-product vars (in case tenant has custom template):
+                productName: s.items[0]?.nome ?? '',
+                quantity: s.items[0]?.quantidade ?? '',
             }),
             newState: s,
         };
@@ -313,9 +412,37 @@ export const processOrderFlow = async (
 
     // ── STATE: awaiting_confirmation ──
     if (s.state === 'awaiting_confirmation') {
+        // Handle stock-limit scenario (s.quantity set, product still in session)
+        if (s.product && s.quantity != null) {
+            if (intent === 'CONFIRM') {
+                const preco = s.product.preco_promocional || s.product.preco_unitario;
+                s.items = [...s.items, { sku: s.product.sku, nome: s.product.nome, quantidade: s.quantity, preco_unitario: preco }];
+                const subtotal = cartTotal(s.items).toFixed(2);
+                s.quantity = null;
+                s.product = null;
+                s.state = 'awaiting_more_or_checkout';
+                return {
+                    reply: applyTemplate(msg.itemAddedToCart || '✅ **{{productName}}** × {{quantity}} adicionado.\n\nDeseja adicionar mais algum produto ou **finalizar** o pedido?', {
+                        productName: s.items[s.items.length - 1].nome,
+                        quantity: s.items[s.items.length - 1].quantidade,
+                        itemCount: s.items.length,
+                        subtotal,
+                    }),
+                    newState: s,
+                };
+            }
+            if (intent === 'DENY') {
+                return {
+                    reply: msg.orderCancelled,
+                    newState: createOrderSession(),
+                };
+            }
+            return { reply: msg.confirmYesNo, newState: s };
+        }
+
+        // Full cart confirmation
         if (intent === 'CONFIRM') {
             s.state = 'completed';
-            const preco = s.product!.preco_promocional || s.product!.preco_unitario;
             let reply: string;
             try {
                 const base = getApiBaseUrl(tenantId, assistantId);
@@ -323,36 +450,38 @@ export const processOrderFlow = async (
                 const res = await axios.post(`${base}${pedidoRoute}`, {
                     documento: s.document,
                     cliente_nome: s.customerName,
-                    itens: [{
-                        sku: s.product!.sku,
-                        nome: s.product!.nome,
-                        quantidade: s.quantity,
-                        preco_unitario: preco,
-                    }],
+                    itens: s.items.map((item) => ({
+                        sku: item.sku,
+                        nome: item.nome,
+                        quantidade: item.quantidade,
+                        preco_unitario: item.preco_unitario,
+                    })),
                 });
                 const { pedido_id, mensagem } = res.data;
                 reply = applyTemplate(msg.orderSuccess, {
-                    quantity: s.quantity ?? 0,
-                    productName: s.product!.nome,
                     pedido_id: pedido_id ?? '—',
                     mensagem: mensagem ?? 'Obrigada pela preferência!',
+                    // Legacy single-product vars:
+                    quantity: s.items[0]?.quantidade ?? '',
+                    productName: s.items[0]?.nome ?? '',
                 });
             } catch (err) {
                 console.error('[ORDER] Erro ao criar pedido na API:', err);
                 reply = applyTemplate(msg.orderErrorFallback, {
-                    quantity: s.quantity ?? 0,
-                    productName: s.product!.nome,
+                    quantity: s.items[0]?.quantidade ?? '',
+                    productName: s.items[0]?.nome ?? '',
                 });
             }
             return {
                 reply,
-                newState: createOrderSession(), // Reset
+                newState: createOrderSession(),
             };
         }
+
         if (intent === 'DENY') {
             return {
                 reply: msg.orderCancelled,
-                newState: createOrderSession(), // Reset
+                newState: createOrderSession(),
             };
         }
 
