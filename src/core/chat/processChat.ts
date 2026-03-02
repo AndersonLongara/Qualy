@@ -69,7 +69,7 @@ function replyLooksLikeTransfer(reply: string): boolean {
     const askingConfirmation = /\b(pode ser\??|posso te (encaminhar|transferir)\??|aguardo (sua )?confirmação|quer que eu transfira|posso transferir)\b/i.test(r);
     if (askingConfirmation) return false;
     const hasTransferVerb = /\b(encaminhar|transferir|direcionar|te direciono|vou te (encaminhar|transferir|direcionar)|encaminho)\b/i.test(r);
-    const hasTarget = /\b(setor|vendas|vendedor|comercial|financeiro|sac|atendente)\b/i.test(r);
+    const hasTarget = /\b(setor|agente|especialista|atendente|departamento|equipe|responsável)\b/i.test(r); // genérico
     return hasTransferVerb && (hasTarget || r.length > 30);
 }
 
@@ -228,19 +228,18 @@ export async function processChatMessage(
             const matched = routes.find((route) => {
                 const label = (route.label || '').toLowerCase();
                 const id = (route.agentId || '').toLowerCase();
-                return (label && rLower.includes(label)) || (id && rLower.includes(id)) ||
-                    (rLower.includes('vendas') && (id === 'vendedor' || label.includes('vendedor') || label.includes('vendas'))) ||
-                    (rLower.includes('vendedor') && (id === 'vendedor' || label.includes('vendedor')));
+                // Procura na resposta se a IA mencionou o label ou o id configurado para esta rota.
+                return (label && rLower.includes(label)) || (id && rLower.includes(id));
             });
-            const route = matched ?? routes[0];
+            const route = matched ?? routes[0]; // vai pro primeiro se não achar exato
             handoffToReturn = { targetAgentId: route.agentId, transitionMessage: reply };
             console.log(`[CHAT] HANDOFF (fallback): agente "${effectiveAssistantId}" → "${route.agentId}" (resposta indicou transferência sem tool)`);
         }
         if (!handoffToReturn && reply === fallbackReply && hasHandoffRoutes && userMessageIsConfirmation(message) && lastAssistantAskedTransferConfirmation(session.history)) {
             // Fallback: usuário confirmou ("sim"/"pode") e a última mensagem do bot pediu confirmação de transferência, mas a IA não chamou a tool
             const routes = assistant.handoffRules!.routes!;
-            const route = routes.find((r) => /vendedor|vendas|comercial/i.test(r.agentId || '') || /vendedor|vendas|comercial/i.test(r.label || '')) ?? routes[0];
-            const transitionMessage = `Vou te encaminhar para nosso setor de vendas. Um momento!`;
+            const route = routes[0]; // Sem mais tentativa de adivinhar 'vendas', ir para a rota padrão primária
+            const transitionMessage = `Vou te encaminhar de acordo com sua solicitação. Um momento!`;
             handoffToReturn = { targetAgentId: route.agentId, transitionMessage };
             reply = transitionMessage;
             console.log(`[CHAT] HANDOFF (fallback confirmação): usuário confirmou, agente "${effectiveAssistantId}" → "${route.agentId}"`);

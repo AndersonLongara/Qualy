@@ -32,7 +32,8 @@ function getApiBaseUrl(tenantId?: string, assistantId?: string | null): string {
 
 /**
  * Se o agente tiver mode=mock, retorna os dados mock correspondentes.
- * Retorna null quando o agente está em modo production (deve chamar API real).
+ * Retorna null APENAS quando o agente está em modo production (deve chamar API real).
+ * Quando mode=mock mas a seção não tem dados, retorna um container vazio (nunca cai no HTTP).
  */
 function getMockData(
     tenantId: string,
@@ -40,8 +41,20 @@ function getMockData(
     section: 'clientes' | 'titulos' | 'pedidos' | 'estoque'
 ): unknown | null {
     const assistant = getAssistantConfig(tenantId, assistantId);
-    if (assistant.api?.mode !== 'mock') return null;
-    return assistant.api.mockData?.[section] ?? null;
+    const mode = assistant.api?.mode;
+    if (mode !== 'mock') {
+        console.log(`[getMockData] tenant=${tenantId} agent=${assistantId ?? 'null'} section=${section} → mode=${mode ?? 'null'} (não-mock, usando HTTP)`);
+        return null;
+    }
+    const data = assistant.api!.mockData?.[section];
+    if (data === undefined || data === null) {
+        // Mode é mock mas não há dados configurados para essa seção.
+        // Retorna container vazio (nunca cai no HTTP em modo mock).
+        console.log(`[getMockData] tenant=${tenantId} agent=${assistantId ?? 'null'} section=${section} → mode=mock mas mockData.${section} vazio, retornando container vazio`);
+        return section === 'estoque' ? [] : {};
+    }
+    console.log(`[getMockData] tenant=${tenantId} agent=${assistantId ?? 'null'} section=${section} → mock data encontrado (tipo: ${typeof data})`);
+    return data;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -218,10 +231,17 @@ export const toolsExecution: Record<string, (a: string | Record<string, unknown>
         const mock = getMockData(tid, aid, 'clientes');
         if (mock !== null) {
             const clientes = mock as Record<string, unknown>;
-            // Mesma lógica do order-flow: chave exata ou variante CNPJ (ex.: plataforma "12345678195" e usuário 12345678000195)
-            const client =
-                clientes[digitsOnly] ??
-                (digitsOnly.length === 14 ? clientes[digitsOnly.replace(/00(\d{3})$/, '$1')] : undefined);
+            const availableKeys = Object.keys(clientes);
+            // Busca exata por dígitos
+            let client = clientes[digitsOnly];
+            // Variante CNPJ: 14 dígitos → remove zeros do meio (filial 0001 → sem zeros: ex. 12345678000195 → 12345678000195)
+            // Também tenta remover trailing zeros extras: "00" antes dos 3 últimos dígitos do sufixo
+            if (!client && digitsOnly.length === 14) {
+                // Remove zeros da filial: "XXXXXXXX0001YY" → tenta "XXXXXXXXYY" (8+2 = 10 dígitos → CPF-like)
+                const stripped = digitsOnly.slice(0, 8) + digitsOnly.slice(12);
+                client = clientes[stripped];
+            }
+            console.log(`[consultar_cliente] mock lookup: digitsOnly=${digitsOnly} keys=[${availableKeys.join(',')}] found=${!!client}`);
             if (client) return JSON.stringify(client);
             return 'Cliente não encontrado na base de dados.';
         }

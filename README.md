@@ -1,235 +1,233 @@
-# AltraFlow
+﻿# AltraIA
 
-Assistente virtual da AltraFlow para consulta de estoque, pedidos e financeiro. Utiliza LLM (OpenRouter, API compatível com OpenAI) para conversa e fluxo de pedido em código (state machine) para confirmação e criação de pedidos.
+Plataforma **multi-tenant** e **multi-agente** para criação e gestão de assistentes virtuais de IA. Cada empresa (tenant) pode ter múltiplos agentes configurados com prompt, modelo, temperatura, ferramentas e regras de roteamento. O canal de produção é WhatsApp (via webhook), e o painel web administra empresas, agentes e testa conversas em tempo real.
 
 ## Stack
 
-- **Backend:** Node.js, TypeScript, Express
-- **Persistência:** Drizzle ORM + Postgres (opcional via `POSTGRES_URL`)
-- **Sessões/cache:** Redis (Vercel KV/Upstash) opcional via `KV_REST_API_URL` e `KV_REST_API_TOKEN`
-- **IA:** OpenRouter (cliente OpenAI), modelo configurável via `OPENROUTER_MODEL`
-- **Frontend (simulador):** Vite, React, Tailwind CSS
-- **Testes:** Jest, ts-jest, supertest
+| Camada | Tecnologia |
+|--------|-----------|
+| Backend | Node.js 18+, TypeScript, Express |
+| AI | OpenRouter (API compatível com OpenAI) — modelos como `google/gemini-2.0-flash-001` |
+| Persistência | Drizzle ORM + SQLite (dev) / Postgres (`POSTGRES_URL`) |
+| Sessões/cache | In-memory (dev) ou Redis — Vercel KV/Upstash via `KV_REST_API_URL` |
+| Frontend (painel) | Vite, React 18, Tailwind CSS |
+| Deploy | Vercel (serverless via `api/index.ts`) |
+| Testes | Jest, ts-jest, supertest |
 
 ## Estrutura do projeto
 
 ```
-AltraFlow/
+AltraIA/
+├── api/
+│   └── index.ts              # Serverless entry-point (Vercel)
 ├── src/
-│   ├── mock/           # Servidor Express (API mock + rota /api/chat)
-│   │   ├── server.ts    # Entrada do servidor
-│   │   ├── app.ts       # App enxuto para testes
-│   │   └── data.ts      # Dados mock compartilhados
+│   ├── mock/                 # Servidor Express principal
+│   │   ├── server.ts         # Entrada: rotas chat, webhook, admin
+│   │   ├── adminRouter.ts    # CRUD de tenants, agentes e tools
+│   │   ├── v1Router.ts       # Rotas mock /v1/* (ERP simulado)
+│   │   ├── sessionStore.ts   # Abstração de sessão (memória / Redis)
+│   │   ├── tenantStorage.ts  # Leitura/escrita de configs de tenant
+│   │   ├── executionStore.ts # Store de execuções (memória / DB)
+│   │   └── usageStore.ts     # Rastreamento de consumo
 │   ├── core/
-│   │   ├── ai/          # Lógica do assistente
-│   │   │   ├── provider.ts   # Chamadas OpenRouter + loop de tools
-│   │   │   ├── tools.ts      # Ferramentas (estoque, cliente, títulos, pedidos)
+│   │   ├── ai/
+│   │   │   ├── provider.ts   # Loop de tool-calling com OpenRouter
+│   │   │   ├── tools.ts      # Tools built-in + execução de tools custom
 │   │   │   ├── intent.ts     # Detecção de intenção (regex/keywords)
-│   │   │   ├── order-flow.ts # State machine do fluxo de pedido
-│   │   │   └── SYSTEM_PROMPT.md
-│   │   └── utils/       # Formatação e helpers
-│   └── __tests__/       # Testes Jest
-├── simulator/           # UI do chat (Vite + React)
+│   │   │   └── order-flow.ts # State machine do fluxo de pedido
+│   │   ├── chat/
+│   │   │   └── processChat.ts # Orquestração principal (tenant, agente, sessão, IA)
+│   │   └── utils/            # Formatação, helpers de documento
+│   ├── config/
+│   │   ├── tenant.ts         # Interfaces e lógica de config de tenant
+│   │   └── agentTemplates.ts # Templates prontos de agente
+│   └── db/
+│       ├── client.ts         # Conexão Drizzle (SQLite/Postgres)
+│       ├── schema.ts         # Tabelas: tenants, execuções, usage
+│       └── repositories/     # tenantRepository, executionRepository, usageRepository
+├── simulator/                # Painel web (Vite + React + Tailwind)
+│   └── src/
+│       ├── pages/
+│       │   ├── empresas/     # Listagem, empresa, agentes, tools, histórico
+│       │   ├── admin/        # Admin gate + painel legado
+│       │   ├── ChatPage.tsx  # Preview do chat
+│       │   └── PublicChatPage.tsx # Link público /t/:tenantId
+│       └── context/          # TenantContext, ThemeContext
+├── config/
+│   ├── tenant.example.json   # Exemplo de config de tenant
+│   └── tenants/              # Config por empresa (JSON)
+├── drizzle/
+│   └── 0000_initial.sql      # Migration inicial
+├── scripts/                  # Utilitários de deploy e migração
 ├── .env.example
-├── .env.local            # Variáveis de ambiente (não versionado)
 └── package.json
 ```
 
 ## Pré-requisitos
 
 - Node.js 18+
-- Conta no [OpenRouter](https://openrouter.ai) e chave de API
+- Chave de API no [OpenRouter](https://openrouter.ai)
 
 ## Como rodar
 
 ### 1. Variáveis de ambiente
 
-Copie o exemplo e preencha a chave da OpenRouter:
-
 ```bash
 cp .env.example .env.local
 ```
 
-Edite `.env.local` e defina pelo menos:
+Edite `.env.local` com no mínimo:
 
-- `OPENROUTER_API_KEY` — chave da API OpenRouter
-- Opcional: `OPENROUTER_MODEL` (padrão: `google/gemini-2.5-flash-lite`)
-- Opcional: `POSTGRES_URL` para persistir dados em banco
-- Opcional: `KV_REST_API_URL` e `KV_REST_API_TOKEN` para sessão em Redis
+```dotenv
+OPENROUTER_API_KEY=sk-or-v1-...               # obrigatório
+OPENROUTER_MODEL=google/gemini-2.0-flash-001  # padrão
+ADMIN_API_KEY=sk_live_...                     # chave para o painel admin
+PORT=3001
 
-### Configuração por cliente
+# Opcional: Postgres (sem isso usa SQLite local)
+POSTGRES_URL=postgresql://...
 
-Sem arquivo de config, o sistema usa **defaults** (AltraFlow, localhost:3000, `SYSTEM_PROMPT.md`). Para personalizar por cliente:
+# Opcional: Redis para sessões compartilhadas
+KV_REST_API_URL=https://...
+KV_REST_API_TOKEN=...
+```
 
-1. **Arquivo:** copie `config/tenant.example.json` para `config/tenant.json` e edite.
-2. **Variáveis de ambiente** (opcional; sobrescrevem o arquivo): `API_BASE_URL`, `ASSISTANT_NAME`, `COMPANY_NAME`, `SYSTEM_PROMPT_PATH`.
-3. **Como adicionar um novo cliente:** edite `config/tenant.json` com o nome da empresa e a `api.baseUrl` do ERP do cliente. Para persona/tom próprio, crie `config/prompts/meu-cliente.md` e em `tenant.json` defina `prompt.systemPromptPath`: `"config/prompts/meu-cliente.md"`.
-
-### 2. Backend (API + chat)
-
-Na raiz do projeto:
+### 2. Backend
 
 ```bash
 npm install
-npm run dev
+npm run dev        # sobe em http://localhost:3001
 ```
 
-O servidor sobe em **http://localhost:3000** (API mock em `/v1/*` e chat em `POST /api/chat`).
-
-### 3. Simulador (interface do chat)
-
-Em outro terminal:
+### 3. Painel web (simulador)
 
 ```bash
 cd simulator
 npm install
-npm run dev
+npm run dev        # sobe em http://localhost:5173
 ```
 
-Acesse a URL exibida pelo Vite (ex.: http://localhost:5173) e converse com o assistente.
+Acesse `http://localhost:5173/empresas` para gerenciar empresas e agentes.
 
-## Arquitetura do chat
+---
 
-```mermaid
-flowchart LR
-    subgraph client [Cliente]
-        UI[Simulator Vite+React]
-    end
-    subgraph backend [Backend]
-        API[Express server.ts]
-        Intent[intent.ts]
-        OrderFlow[order-flow.ts]
-        Provider[provider.ts OpenRouter]
-        Tools[tools.ts]
-    end
-    UI -->|POST /api/chat| API
-    API --> Intent
-    Intent --> OrderFlow
-    Intent --> Provider
-    OrderFlow --> API
-    Provider --> Tools
-    Tools -->|GET/POST /v1/*| API
-```
+## Conceitos principais
 
-1. **Intent** classifica a mensagem (saudação, estoque, pedido, “quero N unidades”, confirmar, negar, etc.).
-2. Se houver **fluxo de pedido ativo** e o intent não for consulta de estoque, a **order flow** (state machine) responde.
-3. Se o intent for **START_ORDER** ou **START_ORDER_WITH_QUANTITY** e existir produto do último estoque consultado, a **order flow** inicia ou continua o pedido.
-4. Saudações e pedido de atendente humano têm respostas fixas.
-5. Demais casos vão para o **LLM** (OpenRouter) com ferramentas (consultar estoque, cliente, títulos, pedidos).
+### Empresas (Tenants)
 
-## Fluxo recomendado de pedido
+Cada empresa tem um `tenantId` único (slug, ex.: `Docedavovo`). Configurações armazenadas em `config/tenants/{tenantId}.json` ou no banco Postgres.
 
-1. **Consultar produto** — ex.: “qual o preço do PROD-008?” ou “tem cimento?”
-2. **Informar quantidade** — “quero 2 unidades” ou “sim quero 2 unidades do produto”
-3. **Informar CPF ou CNPJ** — quando o assistente pedir
-4. **Confirmar** — “sim” para fechar o pedido (o sistema chama `POST /v1/vendas/pedido` e exibe o número do pedido)
+### Agentes
 
-Se a quantidade já tiver sido dita (ex.: “sim quero 2 unidades”), o assistente pede só o CPF/CNPJ e em seguida a confirmação.
+Cada agente dentro de uma empresa possui:
 
-## Clientes de teste (mock)
+| Campo | Descrição |
+|-------|-----------|
+| `id` | Slug único dentro da empresa |
+| `name` | Nome exibido ao usuário |
+| `systemPrompt` | Prompt de sistema (texto ou path de arquivo .md) |
+| `model` | Modelo OpenRouter (ex: `google/gemini-2.0-flash-001`) |
+| `temperature` | 0–2, controla criatividade |
+| `api.mode` | `disabled` / `production` / `mock` |
+| `toolIds` | IDs das tools que o agente pode usar |
+| `handoffRules` | Regras de transferência para outros agentes |
 
-| Documento       | Nome                 | Status    |
-|-----------------|----------------------|-----------|
-| 12345678000190  | Mercadinho do João   | ativo     |
-| 98765432000100  | Pão Quente           | bloqueado |
-| 11122233000144  | Silva Materiais      | inativo   |
-| 55566677000188  | Horizonte Engenharia | ativo     |
-| 52998224725     | José F. Silva (CPF)  | ativo     |
-| 33344455000166  | Depósito Central     | bloqueado |
+### Modos de integração (`api.mode`)
 
-## Simulador e produção
+- **Desativada** — IA responde livremente sem chamar APIs externas.
+- **Mock** — usa dados fictícios em memória (sem ERP real). Ideal para testes e demos.
+- **Produção** — chama a API real do ERP do cliente (`api.baseUrl`).
 
-O **simulador** (interface web com Vite) serve para o cliente **testar, validar e dar OK** antes de ir para produção. Em **produção** o assistente **não** é usado via web: ele se conecta a uma **API de mensageria** (ex.: WhatsApp Business via SouChat ou similar). A plataforma envia as mensagens dos usuários para o nosso backend via **webhook**; o backend processa e devolve a resposta; a mensageria entrega no WhatsApp.
+### Ferramentas (Tools)
 
-### Produção (WhatsApp)
+**Built-in** (disponíveis em todas as empresas):
 
-1. Configure na plataforma de mensageria a **URL do webhook**: `https://<seu-backend>/webhook/messages`
-2. Defina no `.env` o `WEBHOOK_SECRET` ou `SOUCHAT_WEBHOOK_SECRET` para validação de assinatura (recomendado).
-3. O endpoint `POST /webhook/messages` espera no body: `phone` (ou `from`/`sender_id`) e `message` (ou `text`/`content`). Responde com `{ reply: string }`. Consulte a documentação da sua API de mensageria para o formato exato.
+| Tool | Função |
+|------|--------|
+| `consultar_cliente` | Verifica existência e dados cadastrais |
+| `consultar_titulos` | Lista boletos/títulos financeiros |
+| `consultar_pedidos` | Histórico de pedidos e links de NF-e/DANFE |
+| `consultar_estoque` | Preço e disponibilidade de produtos |
 
-## Administração (projetos e agentes)
+**Custom:** qualquer empresa pode criar tools HTTP (GET/POST) via painel. O LLM pode chamá-las igualmente.
 
-É possível gerenciar **empresas (tenants)** e **múltiplos agentes de IA** por empresa sem editar arquivos à mão.
+### Roteamento entre agentes (Handoff)
 
-### Chave de admin
+Quando `handoffRules.enabled = true`, o agente pode usar a tool `transferir_para_agente` para transferir a conversa para outro agente da mesma empresa. A sessão continua sem o usuário repetir o contexto.
 
-- Defina no `.env.local` a variável **`ADMIN_API_KEY`** (uma string secreta, ex.: um token longo).
-- Se `ADMIN_API_KEY` estiver vazia ou não definida, as rotas de admin ficam **desabilitadas** (retornam 401).
-- Quem conhece a chave pode usar o **painel web** ou a **API REST** para criar/editar empresas e agentes.
+### Fluxo do chat público
 
-### Painel web
+`/t/:tenantId` — abre o chat no agente de entrada definido em `chatFlow.entryAgentId`.  
+`/t/:tenantId/:agentId` — abre direto em um agente específico.
 
-1. No simulador (Vite), acesse **Admin** no menu e abra `/admin`.
-2. Na primeira vez, informe a **chave de admin** (o valor de `ADMIN_API_KEY`) e clique em **Acessar**.
-3. A chave é armazenada em **sessionStorage** apenas na sessão do navegador (não é enviada ao servidor além do header nas requisições).
-4. A partir daí você pode listar empresas, criar novas, editar uma empresa (nome, URL da API, etc.) e, dentro de cada uma, **criar/editar/remover agentes** (id, nome, prompt — path ou texto —, modelo OpenRouter).
+---
 
-### API REST (admin)
+## Painel web — Rotas
 
-Todas as rotas abaixo exigem o header **`X-Admin-Key`** (ou `Authorization: Bearer <chave>`) com o valor de `ADMIN_API_KEY`.
+| Rota | Descrição |
+|------|-----------|
+| `/empresas` | Lista de empresas cadastradas |
+| `/empresas/:id` | Agentes da empresa |
+| `/empresas/:id/edit` | Editar empresa (nome, fluxo de chat, escalação humana) |
+| `/empresas/:id/tools` | Ferramentas da empresa (listar, criar, testar) |
+| `/empresas/:id/preview` | Chat preview geral (usa fluxo de entrada) |
+| `/empresas/:id/agents/new` | Criar novo agente (a partir de templates) |
+| `/empresas/:id/agents/:agentId` | Detalhe do agente (8 abas: Configurações, Chat, Histórico, Execuções, Webhook, Consumo, Links, Roteamento) |
+| `/t/:tenantId` | Chat público da empresa |
+
+---
+
+## API REST principal
+
+### Chat
 
 | Método | Rota | Descrição |
 |--------|------|-----------|
-| GET | `/api/admin/tenants` | Lista IDs dos tenants |
-| GET | `/api/admin/tenants/:id` | Detalhe do tenant (config + assistentes) |
-| POST | `/api/admin/tenants` | Cria tenant (body: `id`, `branding`, `api`, `features`, `assistants[]`) |
-| PATCH | `/api/admin/tenants/:id` | Atualiza tenant |
-| DELETE | `/api/admin/tenants/:id` | Remove tenant (arquivo em `config/tenants/{id}.json`) |
+| `POST` | `/api/chat` | Envia mensagem; headers `X-Tenant-Id`, `X-Assistant-Id` (opcional) |
+| `POST` | `/webhook/messages` | Webhook de mensageria (WhatsApp etc.) |
+| `GET` | `/api/config` | Retorna config pública do tenant (nome, saudação, agente de entrada) |
 
-A persistência é em arquivo: **`config/tenant.json`** (tenant default) e **`config/tenants/{tenantId}.json`** para os demais.
-
-### Ferramentas (Tools) via painel
-
-O sistema permite **criar**, **vincular a agentes** e **testar o retorno** das ferramentas (tools) usadas pelo assistente de IA.
-
-1. **Criação de Tools via painel**
-   - No painel, abra uma empresa e clique em **Ferramentas** (ou acesse `/empresas/:id/tools`).
-   - Use **Nova ferramenta** para criar uma tool custom: defina **ID**, **Nome** (para o LLM), **Descrição**, **Parâmetros** (JSON Schema) e **Execução** (built-in existente ou HTTP com URL e método GET/POST).
-   - As tools built-in (`consultar_cliente`, `consultar_titulos`, `consultar_pedidos`, `consultar_estoque`) aparecem na lista e não podem ser editadas/removidas; só tools custom podem ser criadas, editadas e excluídas.
-
-2. **Vínculo ao agente**
-   - Na página de **detalhe do agente** (Configurações), na seção **Ferramentas**, marque as tools que este agente pode usar.
-   - Use o link **Gerenciar ferramentas** para ir ao painel de tools da empresa sem sair do contexto.
-   - Se nenhuma tool for selecionada, o sistema usa o comportamento padrão (por recursos: financeiro, pedido, etc.).
-
-3. **Teste de retorno**
-   - Na página de Ferramentas da empresa, cada tool tem um botão **Testar**.
-   - No modal, preencha os parâmetros (quando houver) e clique em **Executar**.
-   - O retorno é exibido com indicação visual de **sucesso** (verde) ou **erro** (vermelho), permitindo validar a tool antes de usá-la no agente.
-
-**API REST (tools):** Todas com header `X-Admin-Key` (ou `Authorization: Bearer <chave>`).
+### Admin (requer `X-Admin-Key`)
 
 | Método | Rota | Descrição |
 |--------|------|-----------|
-| GET | `/api/admin/tenants/:id/tools` | Lista tools do tenant (built-ins + custom) |
-| POST | `/api/admin/tenants/:id/tools` | Adiciona tool custom (body: `{ tool: { id, name, description, parameters, execution } }`) |
-| PATCH | `/api/admin/tenants/:id/tools/:toolId` | Atualiza tool custom |
-| DELETE | `/api/admin/tenants/:id/tools/:toolId` | Remove tool custom |
-| POST | `/api/admin/tenants/:id/tools/:toolId/test` | Executa a tool com `{ args }` e retorna `{ output }` (ou 500 com `{ error }`) |
+| `GET` | `/api/admin/tenants` | Lista tenants |
+| `GET/POST` | `/api/admin/tenants/:id` | Detalhe / Cria tenant |
+| `PATCH/DELETE` | `/api/admin/tenants/:id` | Atualiza / Remove tenant |
+| `GET/POST` | `/api/admin/tenants/:id/tools` | Lista / Cria tool |
+| `PATCH/DELETE` | `/api/admin/tenants/:id/tools/:toolId` | Atualiza / Remove tool |
+| `POST` | `/api/admin/tenants/:id/tools/:toolId/test` | Testa tool com `{ args }` |
+| `GET` | `/api/admin/executions` | Lista execuções (filtro por tenant, phone) |
+| `GET` | `/api/admin/conversations` | Lista conversas únicas por sessão |
+| `GET` | `/api/admin/usage` | Consumo por tenant/agente |
 
-### Chat e webhook com agente
+---
 
-No **chat** (`POST /api/chat`) e no **webhook** (`POST /webhook/messages`) é possível enviar, além do `tenant_id`, um **`assistant_id`** (no body ou header/query) para escolher qual agente da empresa atende. As sessões são separadas por (tenant, assistente, telefone).
+## Produção — WhatsApp
+
+1. Configure na plataforma de mensageria a URL de webhook: `https://<seu-backend>/webhook/messages`
+2. Defina `SOUCHAT_WEBHOOK_SECRET` no `.env` para validação de assinatura.
+3. O endpoint aceita no body: `phone` (ou `from`/`sender_id`) e `message` (ou `text`/`content`).
+
+---
 
 ## Testes
 
-Na raiz do projeto:
-
 ```bash
-npm run test
+npm run test              # roda todos os testes
+npm run test:watch        # modo watch
+npm run test:coverage     # cobertura
 ```
 
-Scripts úteis: `npm run test:watch`, `npm run test:coverage`.
+---
 
-## Scripts principais (raiz)
+## Scripts principais
 
-| Script   | Comando                    | Descrição              |
-|----------|----------------------------|------------------------|
-| `dev`    | `ts-node src/mock/server.ts` | Sobe API + chat        |
-| `start`  | idem                       | Idem                   |
-| `build`  | `tsc`                      | Compila TypeScript     |
-| `db:migrate` | `node scripts/db-migrate.js` | Aplica migrations SQL no Postgres |
-| `db:migrate:json` | `ts-node scripts/migrate-json-to-db.ts` | Migra tenants/agentes de JSON para Postgres |
-| `vercel:bootstrap:storage` | `node scripts/vercel-bootstrap-storage.js` | Bootstrap Vercel/integrations sem prompt |
-| `vercel:deploy:ci` | `node scripts/vercel-deploy-ci.js` | Pipeline não-interativo (bootstrap+migrate+deploy) |
-| `test`   | `jest`                     | Roda os testes         |
+| Script | Descrição |
+|--------|-----------|
+| `npm run dev` | Sobe backend em modo dev (`ts-node`) na porta 3001 |
+| `npm run build` | Compila TypeScript |
+| `npm run db:migrate` | Aplica migrations SQL no Postgres |
+| `npm run db:migrate:json` | Migra configs JSON → Postgres |
+| `npm run vercel:deploy:ci` | Pipeline CI: bootstrap + migrate + deploy Vercel |
+| `npm run test` | Roda Jest |

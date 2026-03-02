@@ -1,94 +1,106 @@
-# TODOs — Plano Arquitetural AltraFlow
+﻿# TODOs — AltraIA
 
-Lista completa de tarefas do plano. Marque com `[x]` quando concluído. Ordem de execução: Fase 1 → 2 → 3 → 4 → 5.
-
----
-
-## Checklist rápido (todas as to-dos)
-
-- [ ] **T1** — Intent START_ORDER_WITH_QUANTITY + parseQuantityFromOrderMessage
-- [ ] **T2** — Order flow: quantidade pré-preenchida, awaiting_cpf → awaiting_confirmation
-- [ ] **T6** — Ordem dos intents: START_ORDER_WITH_QUANTITY antes de CONFIRM
-- [ ] **Roteamento** — server.ts: rotear START_ORDER_WITH_QUANTITY para order flow
-- [ ] **T3** — Provider: max_tokens, finish_reason length, error_dump.json
-- [ ] **T4** — Provider: fallback para "..." ou conteúdo vazio
-- [ ] **T8** — Log servidor: "(truncado no log)"
-- [ ] **T5** — Order flow: POST /v1/vendas/pedido ao confirmar
-- [ ] **README** — README.md com stack, arquitetura, fluxo, clientes de teste
-- [ ] **TODOS** — TODOS.md com T1–T12 e ordem sugerida
-- [ ] **T7** — Validação OPENROUTER_API_KEY na subida
-- [ ] **T9** — README: fluxo recomendado de pedido
-- [ ] **T10** — v1Router.ts + app.use('/v1', createV1Router(...))
-- [ ] **T11** — sessionStore.ts + sessionStore.get(phone)
-- [ ] **T12** — chat-flow.test.ts: intent, parseQuantity, processOrderFlow
+Rastreamento de tarefas do projeto. `[x]` = concluído, `[ ]` = pendente.
 
 ---
 
-## Fase 1 — Comportamento do agente (crítico)
+## Funcionalidades entregues (v1 MVP)
 
-| ID | Status | Tarefa | Arquivos | Critério de aceite |
-|----|--------|--------|----------|--------------------|
-| T1 | [ ] | Adicionar intent `START_ORDER_WITH_QUANTITY` com padrões para "quero N unidades", "sim quero N unidades", "N unidades do produto". Exportar `parseQuantityFromOrderMessage(message)`. | `src/core/ai/intent.ts` | `detectIntent("sim quero 2 unidades do produto") === 'START_ORDER_WITH_QUANTITY'`; `parseQuantityFromOrderMessage("sim quero 2 unidades") === 2`. |
-| T2 | [ ] | No order flow: em idle com intent `START_ORDER_WITH_QUANTITY` e produto definido, extrair quantidade, setar na sessão, transicionar para `awaiting_cpf` (ou `awaiting_confirmation` se quantidade > estoque). Em `awaiting_cpf`, se `quantity` já estiver setada, após validar CPF ir para `awaiting_confirmation` com resumo. | `src/core/ai/order-flow.ts` | Para "sim quero 2 unidades" com lastProduct, resposta pede CPF e `newState.quantity === 2`; após CPF válido, resposta é resumo e confirmação. |
-| T6 | [ ] | Garantir ordem das regras de intent: START_ORDER_WITH_QUANTITY antes de CONFIRM e START_ORDER. | `src/core/ai/intent.ts` | "sim quero 2 unidades" não é classificado como CONFIRM. |
-| Roteamento | [ ] | Em `server.ts`, tratar `intent === 'START_ORDER_WITH_QUANTITY'` como START_ORDER: setar `session.order.product = session.lastProduct` e chamar `processOrderFlow`. | `src/mock/server.ts` | Mensagem "sim quero 2 unidades" após consulta de produto é respondida pelo order flow, não pelo LLM. |
-
----
-
-## Fase 2 — Provider e log
-
-| ID | Status | Tarefa | Arquivos | Critério de aceite |
-|----|--------|--------|----------|--------------------|
-| T3 | [ ] | Definir `max_tokens` (ex.: 1024) nas chamadas ao OpenRouter. Se `finish_reason === 'length'`, marcar resposta como truncada (fallback ou sufixo). Manter dump em `error_dump.json` quando conteúdo vazio. | `src/core/ai/provider.ts` | Respostas longas não cortam sem aviso; conteúdo vazio gera dump. |
-| T4 | [ ] | Se `content` for apenas "..." ou string muito curta/não informativa, retornar mensagem fixa em vez do conteúdo bruto. | `src/core/ai/provider.ts` | Usuário nunca recebe "..." como resposta. |
-| T8 | [ ] | No log da resposta no servidor, usar "(truncado no log)" quando truncar no console. | `src/mock/server.ts` | Log não exibe "..." como se fosse a resposta enviada. |
-
----
-
-## Fase 3 — Integração de pedido
-
-| ID | Status | Tarefa | Arquivos | Critério de aceite |
-|----|--------|--------|----------|--------------------|
-| T5 | [ ] | No order flow, ao confirmar (intent CONFIRM em awaiting_confirmation), chamar `POST /v1/vendas/pedido` com documento, cliente_nome, itens (sku, nome, quantidade, preco_unitario). Incluir `pedido_id` e mensagem da API na resposta; em erro de rede, mensagem de fallback. | `src/core/ai/order-flow.ts` | Confirmação exibe número do pedido quando a API retorna sucesso. |
-
----
-
-## Fase 4 — Documentação e operação
-
-| ID | Status | Tarefa | Arquivos | Critério de aceite |
-|----|--------|--------|----------|--------------------|
-| README | [ ] | Criar README.md na raiz: título, descrição, stack, estrutura de pastas, pré-requisitos, como rodar (backend + simulador), variáveis de ambiente, diagrama de arquitetura do chat, fluxo recomendado de pedido, clientes de teste, testes. | `README.md` | Desenvolvedor consegue rodar o projeto e entender o fluxo só com o README. |
-| TODOS | [ ] | Manter TODOS.md com as tarefas T1–T12 (e Roteamento, README) listadas com prioridade e status; incluir ordem sugerida. | `TODOS.md` | Lista rastreável e ordenada. |
-| T7 | [ ] | Na subida do servidor, carregar `.env.local` e validar `OPENROUTER_API_KEY`; se vazia, logar aviso em destaque; se `NODE_ENV === 'production'`, `process.exit(1)`. | `src/mock/server.ts` | Servidor não sobe em produção sem chave; em dev, aviso visível. |
-| T9 | [ ] | Documentar no README o fluxo: consultar produto → "quero N unidades" ou "fazer pedido" → CPF → quantidade (se ainda não informada) → confirmação. | `README.md` | Fluxo de pedido explícito no README. |
+- [x] Multi-tenant: CRUD de empresas via painel e API REST
+- [x] Multi-agente: múltiplos agentes por empresa com configuração individual
+- [x] Configuração de agente: prompt (texto ou arquivo .md), modelo, temperatura
+- [x] Modos de integração por agente: Desativada / Mock / Produção
+- [x] Ferramentas built-in: consultar_cliente, consultar_titulos, consultar_pedidos, consultar_estoque
+- [x] Tools custom (HTTP GET/POST) criáveis via painel
+- [x] Teste de tools diretamente no painel (modal com args + output)
+- [x] Vínculo de tools por agente (toolIds)
+- [x] Roteamento entre agentes (handoff / transferir_para_agente)
+- [x] Agente de entrada por empresa (chatFlow.entryAgentId)
+- [x] Escalação para atendente humano (webhook + mensagem customizável)
+- [x] Chat preview por agente (aba Chat no detalhe do agente)
+- [x] Chat preview geral da empresa (usando fluxo de entrada)
+- [x] Link público: /t/:tenantId e /t/:tenantId/:agentId
+- [x] Histórico de conversas por sessão com timeline de handoffs
+- [x] Execuções com status, duração, origem, debug
+- [x] Rastreamento de consumo por agente
+- [x] Webhook de entrada (WhatsApp / SouChat)
+- [x] Configuração de webhook por agente (aba Webhook)
+- [x] Persistência: JSON (dev) + Postgres via Drizzle ORM
+- [x] Sessões: in-memory (dev) + Redis (Vercel KV)
+- [x] Deploy serverless Vercel (api/index.ts)
+- [x] Templates de agente (atendimento, vendas, SAC, financeiro...)
+- [x] Painel admin protegido por ADMIN_API_KEY
+- [x] Tema claro/escuro no painel
+- [x] Incrementar / Refinar prompt com IA (botões no painel)
+- [x] Aba Links (link público do agente com QR code)
+- [x] Aba Roteamento (gerenciar handoffRules do agente)
+- [x] State machine do fluxo de pedido (order-flow)
+- [x] Testes Jest: chat-flow, tools, intent, format, document, webhook, executions
 
 ---
 
-## Fase 5 — Arquitetura e testes
+## Onda 2 — Gestão Operacional
 
-| ID | Status | Tarefa | Arquivos | Critério de aceite |
-|----|--------|--------|----------|--------------------|
-| T10 | [ ] | Extrair rotas `/v1/*` para um router (ex.: `createV1Router(deps)` em `v1Router.ts`); montar em `server.ts` com `app.use('/v1', createV1Router(...))`. | `src/mock/v1Router.ts`, `src/mock/server.ts` | Rotas de negócio mock ficam em módulo separado. |
-| T11 | [ ] | Introduzir store de sessão (ex.: `sessionStore.get(phone)`); implementação in-memory em módulo próprio (ex.: `sessionStore.ts`); servidor usa o store em vez de objeto global SESSIONS. | `src/mock/sessionStore.ts`, `src/mock/server.ts` | Sessão acessada via abstração; troca futura por Redis/arquivo possível. |
-| T12 | [ ] | Adicionar testes: (1) `detectIntent("sim quero 2 unidades do produto") === 'START_ORDER_WITH_QUANTITY'`; (2) `parseQuantityFromOrderMessage` retorna número correto; (3) com lastProduct e "sim quero 2 unidades", `processOrderFlow` retorna resposta não vazia, sem "...", pedindo CPF e com quantity setada. | `src/__tests__/chat-flow.test.ts` | Testes automatizados cobrem o cenário crítico e passam. |
-
----
-
-## Ordem de execução obrigatória
-
-1. **T1, T2, T6 + Roteamento** — Intent e order flow (elimina o "..." no cenário da imagem).
-2. **T3, T4, T8** — Provider e log.
-3. **T5** — Integração com `POST /v1/vendas/pedido`.
-4. **README, TODOS, T7, T9** — Documentação e validação de env.
-5. **T10, T11, T12** — Router `/v1`, session store e testes do cenário.
-
-**Dependências:** T2 depende de T1. Roteamento depende de T1. T5 depende do order flow. T12 depende de T1 e T2.
+| ID | Status | Tarefa |
+|----|--------|--------|
+| O2-1 | [ ] | Dashboard de métricas: volume diário, taxa de erro, duração média por empresa/agente |
+| O2-2 | [ ] | Busca e filtros avançados no histórico (data, status, agente, texto) |
+| O2-3 | [ ] | Exportar execuções (CSV ou JSON) |
+| O2-4 | [ ] | Alertas de erros: notificar quando tool falha repetidamente (ex.: e-mail ou webhook) |
+| O2-5 | [ ] | Rate limit por telefone (proteção contra abuso) |
+| O2-6 | [ ] | Autenticação real no painel (login com usuário/senha ou OAuth) — substituir ADMIN_API_KEY simples |
+| O2-7 | [ ] | Cobertura de testes > 80% (adicionar testes de integração de admin router) |
+| O2-8 | [ ] | Limpar debug logs residuais (fetch para 127.0.0.1:7520 no tenantRepository.ts) |
 
 ---
 
-## Definição de concluído
+## Onda 3 — Expansão de Canais e Automações
 
-- Todas as tarefas das fases 1 a 5 implementadas conforme critérios de aceite.
-- README.md e TODOS.md existem na raiz e estão atualizados.
-- Testes do cenário "consulta PROD-008 → sim quero 2 unidades" existem e passam.
-- Nenhuma resposta do assistente é literalmente "..." nesse fluxo; o order flow é acionado e pede CPF ou confirmação conforme o estado.
+| ID | Status | Tarefa |
+|----|--------|--------|
+| O3-1 | [ ] | Notificações proativas: boletos a vencer, status de pedido, cobranças |
+| O3-2 | [ ] | Agendamento de mensagens (envio programado ou por evento) |
+| O3-3 | [ ] | OTP / Autenticação do cliente final (código de verificação para operações sensíveis) |
+| O3-4 | [ ] | Suporte a Telegram como canal de entrada |
+| O3-5 | [ ] | Widget web (chat embutível em sites) |
+| O3-6 | [ ] | Gestão de contatos / CRM light (lista de clientes atendidos com histórico) |
+| O3-7 | [ ] | Marketplace de templates de agente |
+
+---
+
+## Onda 4 — Plataforma SaaS
+
+| ID | Status | Tarefa |
+|----|--------|--------|
+| O4-1 | [ ] | Planos e billing (cobrança por mensagem ou por empresa via Stripe) |
+| O4-2 | [ ] | Onboarding guiado (wizard: criar empresa + agente + conectar WhatsApp) |
+| O4-3 | [ ] | Multi-usuário por empresa (cada empresa tem seus admins) |
+| O4-4 | [ ] | Auditoria: log de alterações (quem, o quê, quando) |
+| O4-5 | [ ] | API pública com documentação Swagger/OpenAPI |
+| O4-6 | [ ] | White-label: customizar logo, domínio e cores por empresa |
+
+---
+
+## Dívida técnica e melhorias pontuais
+
+| ID | Status | Tarefa |
+|----|--------|--------|
+| DT-1 | [ ] | Remover código de debug agent (fetch 127.0.0.1:7520) do tenantRepository.ts |
+| DT-2 | [ ] | Mover inline debug snippets de todos os arquivos para logger centralizado |
+| DT-3 | [ ] | Adicionar paginação nas rotas de execuções e conversas |
+| DT-4 | [ ] | Implementar retry com exponential backoff nas chamadas a APIs de ERP |
+| DT-5 | [ ] | Circuit breaker para APIs externas instáveis |
+| DT-6 | [ ] | Validação de OPENROUTER_API_KEY na subida (aviso em dev, exit(1) em prod) |
+| DT-7 | [ ] | max_tokens + tratamento de finish_reason=length no provider |
+| DT-8 | [ ] | Passar contexto resumido ao agente de destino no handoff |
+
+---
+
+## Ordem de prioridade sugerida
+
+1. **DT-1, DT-2** — Limpar código de debug residual (impacta leitura e segurança)
+2. **O2-1** — Dashboard de métricas (valor imediato para clientes)
+3. **O2-5, DT-3** — Rate limit + paginação (estabilidade)
+4. **O2-6** — Auth real no painel (segurança)
+5. **O3-1** — Notificações proativas (receita e retenção)
+6. **O4-2** — Onboarding guiado (escalar novos clientes)

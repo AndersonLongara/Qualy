@@ -9,7 +9,11 @@
   },
   "prompt": {
     "systemPromptPath": null,
-    "systemPrompt": null
+    "systemPrompt": "Voce e um assistente.",
+    "greeting": null,
+    "humanAgentMessage": null,
+    "temperature": 0.3,
+    "orderFlowMessages": null
   },
   "features": {
     "orderFlowEnabled": true,
@@ -20,8 +24,29 @@
       "id": "teste",
       "name": "teste",
       "systemPromptPath": null,
-      "systemPrompt": "teste sdr teste",
-      "model": "openai/gpt-4o-mini"
+      "systemPrompt": null,
+      "model": null,
+      "temperature": null,
+      "api": {
+        "mode": "mock",
+        "baseUrl": null,
+        "routes": null,
+        "mockData": {
+          "clientes": {
+            "10293847000155": {
+              "razao_social": "Empresa LTDA",
+              "status": "ativo"
+            }
+          }
+        }
+      },
+      "features": null,
+      "handoffRules": null,
+      "toolIds": [
+        "consultar_cliente",
+        "consultar_pedidos",
+        "consultar_estoque"
+      ]
     }
   ]
 }

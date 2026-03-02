@@ -88,7 +88,7 @@ const FINANCIAL_TOOL_NAMES = new Set(['consultar_cliente', 'consultar_titulos', 
 /** Ferramenta de estoque/pedido. Só é passada quando features.orderFlowEnabled é true. */
 const ORDER_TOOL_NAMES = new Set(['consultar_estoque']);
 
-type ToolDefinition = (typeof toolsDefinition)[number] | ReturnType<typeof buildHandoffToolDefinition>;
+type ToolDefinition = (typeof toolsDefinition)[number] | ReturnType<typeof buildHandoffToolDefinition> | ReturnType<typeof buildHumanEscalationToolDefinition>;
 
 function toolConfigToOpenAIDef(tool: ToolConfig): ToolDefinition {
     return {
@@ -194,17 +194,23 @@ ${isVendedor ? '- **Saudações:** Apresente-se sempre como **Vendedor** ou seto
     let fullPrompt = strictPrefix + content;
     // Agentes com roteamento ativo: não pedir CPF/CNPJ para pedido — transferir para o agente correto
     if (assistant.handoffRules?.enabled && assistant.handoffRules.routes?.length) {
+        const routes = assistant.handoffRules.routes;
+        const availableTargets = routes.map(r => `**${r.label || r.agentId}**`).join(', ');
+
         fullPrompt += `
 
 ---
-# ROTEAMENTO (OBRIGATÓRIO — FLUXO HUMANO)
-Quando o cliente demonstrar intenção de **fazer pedido**, **comprar**, **ajuda com pedido** ou **operar financeiro** (boletos, 2ª via, etc.):
-- **Reconheça só a intenção** e **ofereça a transferência**. NÃO faça perguntas sobre produtos, itens, como comprar ou qual produto o cliente quer — isso é papel do agente de destino (ex.: vendedor). Sua única ação é indicar que vai transferir e perguntar se pode transferir.
-- **NÃO** peça CPF/CNPJ nem execute consultas de cliente. **NÃO** pergunte "qual produto?", "tem algo em mente?", "quer recomendação?" — essas perguntas são do setor de vendas, não suas.
-- **Primeiro** mensagem curta: informe que vai encaminhar para o setor correto e **pergunte se pode transferir** (ex.: "Vou te transferir para nosso setor de vendas para te ajudar com o pedido. Pode ser?"). **NÃO chame a ferramenta de transferência nesta mensagem** — apenas aguarde a confirmação do cliente.
-- **Só depois** que o cliente **confirmar** (sim, pode, ok, claro, pode ser, etc.) você **DEVE** chamar a ferramenta **transferir_para_agente**. O agente de destino é quem fará perguntas sobre produtos e pedido.
-- Se a última mensagem que você enviou foi pedir confirmação (ex.: "Pode ser?") e o cliente respondeu **apenas** "sim", "pode", "ok" ou "claro", **chame imediatamente** a ferramenta **transferir_para_agente** com o agente que você ofereceu (ex.: vendedor) — não responda só com texto.
-- **Não repita saudação:** Se já existe conversa anterior (o cliente já enviou mensagens), NÃO diga "Olá" ou "Bom dia" de novo. Vá direto ao ponto: ofereça a transferência (ex.: "Vou te transferir para nosso setor de vendas para te ajudar com o pedido. Pode ser?").`;
+# ROTEAMENTO (OBRIGATÓRIO — FLUXO HUMANO / ESPECIALIZADO)
+Você tem a capacidade de transferir o atendimento para outros setores/agentes.
+Destinos disponíveis configurados para você: ${availableTargets}.
+
+Quando o cliente demonstrar intenção relacionada a assuntos que não são de sua especialidade ou que deixam claro que ele precisa de um dos destinos acima:
+- **Reconheça só a intenção** e **ofereça a transferência** para o respectivo setor. NÃO faça perguntas aprofundadas sobre o assunto do destino (ex.: se for para vendas, não pergunte qual produto; se for para financeiro, não peça dados de boleto). Sua única ação é indicar que vai transferir e perguntar se pode transferir.
+- **NÃO** peça CPF/CNPJ nem execute consultas a não ser que seja exclusivamente do seu próprio escopo.
+- **Primeiro** mensagem curta: informe que vai encaminhar para o setor correto (cite o nome do setor, ex.: "Vou te transferir para o setor Financeiro para te ajudar com isso. Pode ser?"). **NÃO chame a ferramenta de transferência nesta mensagem** — apenas aguarde a confirmação do cliente.
+- **Só depois** que o cliente **confirmar** (sim, pode, ok, claro, pode ser, etc.) você **DEVE** chamar a ferramenta **transferir_para_agente**. O agente de destino é quem fará as perguntas específicas.
+- Se a última mensagem que você enviou foi pedir confirmação e o cliente respondeu **apenas** "sim", "pode", "ok" ou "claro", **chame imediatamente** a ferramenta **transferir_para_agente** com o ID correto do agente oferecido — não responda só com texto.
+- **Não repita saudação:** Se já existe conversa anterior, NÃO diga "Olá" ou "Bom dia" de novo. Vá direto ao ponto.`;
     }
     return fullPrompt;
 }
@@ -294,13 +300,13 @@ export const getAIResponse = async (tenantId: string, userMessage: string, histo
                 const functionName = toolCall.function.name;
                 const rawArgs = toolCall.function.arguments;
                 // #region agent log
-                fetch('http://127.0.0.1:7520/ingest/e566106f-4ab4-40ab-8bfd-c703d470cd11',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'00cc2d'},body:JSON.stringify({sessionId:'00cc2d',hypothesisId:'H4',location:'provider.ts:toolCall',message:'Tool call before parse',data:{functionName,rawArgs:String(rawArgs).substring(0,300)},timestamp:Date.now()})}).catch(()=>{});
+                fetch('http://127.0.0.1:7520/ingest/e566106f-4ab4-40ab-8bfd-c703d470cd11', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '00cc2d' }, body: JSON.stringify({ sessionId: '00cc2d', hypothesisId: 'H4', location: 'provider.ts:toolCall', message: 'Tool call before parse', data: { functionName, rawArgs: String(rawArgs).substring(0, 300) }, timestamp: Date.now() }) }).catch(() => { });
                 // #endregion
                 let functionArgs: any;
                 try {
                     functionArgs = JSON.parse(rawArgs);
                 } catch (parseErr: any) {
-                    fetch('http://127.0.0.1:7520/ingest/e566106f-4ab4-40ab-8bfd-c703d470cd11',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'00cc2d'},body:JSON.stringify({sessionId:'00cc2d',hypothesisId:'H4',location:'provider.ts:parseArgs',message:'JSON.parse args threw',data:{error:parseErr?.message},timestamp:Date.now()})}).catch(()=>{});
+                    fetch('http://127.0.0.1:7520/ingest/e566106f-4ab4-40ab-8bfd-c703d470cd11', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '00cc2d' }, body: JSON.stringify({ sessionId: '00cc2d', hypothesisId: 'H4', location: 'provider.ts:parseArgs', message: 'JSON.parse args threw', data: { error: parseErr?.message }, timestamp: Date.now() }) }).catch(() => { });
                     throw parseErr;
                 }
                 console.log(`[AI] → ${functionName}(`, functionArgs, ')');

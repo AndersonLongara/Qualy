@@ -235,6 +235,15 @@ export async function writeTenant(tenantId: string, payload: Record<string, unkn
         ...(merged.chatFlow ? { chatFlow: merged.chatFlow } : {}),
     };
     fs.writeFileSync(filePath, JSON.stringify(toWrite, null, 2), 'utf8');
+    // [DEBUG] Log mock data persistence
+    if (Array.isArray(toWrite.assistants)) {
+        for (const a of toWrite.assistants as any[]) {
+            if (a?.api?.mode === 'mock') {
+                const clientesKeys = a.api?.mockData?.clientes ? Object.keys(a.api.mockData.clientes) : [];
+                console.log(`[writeTenant] Escrevendo agente "${a.id}" com mode=mock → ${filePath} | clientes keys: [${clientesKeys.join(', ')}]`);
+            }
+        }
+    }
 
     // 2. Persiste no Postgres (storage duradouro em produção)
     // #region agent log

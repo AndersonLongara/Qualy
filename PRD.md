@@ -1,50 +1,115 @@
-# PRD - AltraFlow: Assistente Virtual WhatsApp
+﻿# PRD — AltraIA: Plataforma Multi-Tenant de Agentes de IA
 
-## 1. Visão Geral e Objetivos
-**Objetivo Estratégico:** Reduzir drasticamente o atendimento humano e acelerar o autosserviço (self-service) através de um assistente virtual no WhatsApp.
+## 1. Visão Geral
 
-**Frentes de Atuação:**
-1.  **Comercial:** Cadastro, atualização e transbordo inteligente.
-2.  **Financeiro:** Gestão de títulos, 2ª via de boletos e alertas automáticos de vencimento.
-3.  **Faturamento:** Rastreamento de pedidos (últimos 60 dias) e envio de DANFE/XML.
-4.  **Telemarketing/Vendas:** Consulta de estoque/preço, emissão de pedidos autenticada e status de pagamento.
+**AltraIA** é uma plataforma SaaS para criação, configuração e operação de assistentes virtuais de IA por WhatsApp. Focada em empresas B2B que precisam automatizar atendimento com dados do próprio ERP, a plataforma permite que cada empresa tenha múltiplos agentes especializados (atendimento, comercial, financeiro, SAC) com roteamento inteligente entre eles.
 
-## 2. Indicadores de Sucesso (KPIs)
-Estes indicadores devem ser monitorados desde o Day 1:
-- **Taxa de Deflexão:** % de atendimentos resolvidos sem intervenção humana.
-- **TMA (Tempo Médio de Atendimento):** Tempo até a "resolução" do problema.
-- **Taxa de Erro de Integração:** Falhas em ERP, geração de boletos, notas ou pedidos.
-- **Taxa de Conversão:** De "Consulta de Preço" para "Pedido Emitido".
-- **Funnel Drop-off:** Taxa de abandono por etapa (Auth, Seleção, Carrinho, Confirmação).
+**Proposta de valor:** configurar um agente de IA funcional, conectado ao ERP, em minutos — sem código.
 
-## 3. Estratégia de Entrega (MVP em Ondas)
-Abordagem "MVP Inteligente" para gerar valor rápido e mitigar riscos.
+---
 
-### 🌊 Onda 1: MVP de Autosserviço (IA-First)
-*Foco: Volume e Baixo Risco com Inteligência Artificial.*
-- **Core:** AI Orchestrator (Intent Recognition + Tool Calling).
-- **Interação:** Conversa Natural (Sem menus numéricos rígidos).
-- **Financeiro:** Consulta de Títulos e Emissão de 2ª via (lista + PDF/Linha digitável).
-- **Faturamento:** Status de pedidos (60 dias) e Download de DANFE/XML.
-- **Handoff:** Transbordo inteligente quando a IA não souber resolver.
+## 2. Estado Atual (v1 — MVP funcional)
 
-### 🌊 Onda 2: Vendas Assistidas (Geração de Receita)
-*Foco: Funcionalidade Transacional.*
-- **Catálogo:** Estoque e Preço por fornecedor.
-- **Pedido:** Carrinho de compras, planos de pagamento, observações.
-- **Checkout:** Confirmação por código (MFA) e Link de Pagamento (PIX/Cartão).
-- **Acompanhamento:** Transmissão de pedido "Pendente" e rastreio.
+### Funcionalidades entregues
 
-### 🌊 Onda 3: Automação Proativa (Agente Autônomo)
-*Foco: Retenção e Engajamento.*
-- **Cobrança:** Alertas automáticos (Pré-vencimento, Dia D, Pós-vencimento).
-- **Notificações:** Status de mudança de pedido (Faturado, Saiu para Entrega, etc.).
-- **Segurança:** Recuperação de acesso automatizada com validação forte.
+| Funcionalidade | Status |
+|----------------|--------|
+| Multi-tenant com CRUD de empresas (painel + API) | ✅ |
+| Multi-agente por empresa (criar, editar, excluir) | ✅ |
+| Configuração de agente: prompt, modelo, temperatura | ✅ |
+| Modos de integração: Desativada / Mock / Produção | ✅ |
+| Tools built-in: cliente, títulos, pedidos, estoque | ✅ |
+| Tools custom (HTTP GET/POST) via painel | ✅ |
+| Teste de tools diretamente no painel | ✅ |
+| Vínculo de tools por agente | ✅ |
+| Roteamento entre agentes (handoff / cadeia de agentes) | ✅ |
+| Agente de entrada por empresa (chatFlow.entryAgentId) | ✅ |
+| Escalação para atendente humano (webhook + mensagem) | ✅ |
+| Chat preview por agente (painel admin) | ✅ |
+| Chat preview geral (usando fluxo de entrada) | ✅ |
+| Link público: `/t/:tenantId` e `/t/:tenantId/:agentId` | ✅ |
+| Histórico de conversas por sessão (timeline) | ✅ |
+| Execuções com status, duração, origem, debug | ✅ |
+| Rastreamento de consumo (tokens/chamadas) por agente | ✅ |
+| Webhook de entrada (WhatsApp / SouChat) | ✅ |
+| Configuração de webhook por agente | ✅ |
+| Persistência: JSON (dev) ou Postgres via Drizzle ORM | ✅ |
+| Sessões: in-memory (dev) ou Redis (Vercel KV) | ✅ |
+| Deploy serverless na Vercel | ✅ |
+| Templates de agente (atendimento, vendas, SAC, etc.) | ✅ |
+| Painel admin protegido por ADMIN_API_KEY | ✅ |
+| Tema claro/escuro no painel | ✅ |
+| Incrementar/Refinar prompt com IA | ✅ |
 
-## 4. Riscos e Mitigação
+---
+
+## 3. Indicadores de Sucesso (KPIs)
+
+| Indicador | Meta |
+|-----------|------|
+| Taxa de deflexão | > 70% dos atendimentos resolvidos sem humano |
+| TMA (Tempo Médio) | < 90s até resolução |
+| Taxa de erro de integração | < 2% das chamadas |
+| Taxa de conversão (consulta → pedido) | Meta por empresa |
+| Uptime da API | > 99,5% |
+| Tempo de configuração de novo agente | < 10 minutos |
+
+---
+
+## 4. Roadmap de Evoluções
+
+### 🌊 Onda 2 — Gestão Operacional (próximas prioridades)
+
+| Funcionalidade | Descrição |
+|----------------|-----------|
+| Dashboard de métricas | Gráficos de volume, deflexão, duração, erros por empresa/agente |
+| Busca e filtros avançados no histórico | Filtrar por data, status, agente, conteúdo |
+| Exportar execuções (CSV/JSON) | Para análise externa |
+| Alertas de erros de integração | Notificação quando tool falha repetidamente |
+| Controle de rate limit por telefone | Proteger contra abuso |
+| Autenticação de usuário no painel | Login real (substituir ADMIN_API_KEY por sessão autenticada) |
+
+### 🌊 Onda 3 — Expansão de Canais e Automações
+
+| Funcionalidade | Descrição |
+|----------------|-----------|
+| Suporte a múltiplos canais | Instagram DM, Telegram, widget web |
+| Notificações proativas | Boletos a vencer, status de pedido, cobranças |
+| Agendamento de mensagens | Envio programado ou gatilho por evento |
+| OTP / Autenticação do cliente | Código de verificação para operações sensíveis |
+| Gestão de contatos / CRM light | Lista de clientes atendidos com histórico |
+| Marketplace de templates | Templates de agente compartilháveis entre empresas |
+
+### 🌊 Onda 4 — Plataforma SaaS Completa
+
+| Funcionalidade | Descrição |
+|----------------|-----------|
+| Planos e billing | Cobrança por mensagem ou por empresa (Stripe) |
+| Onboarding guiado | Wizard para criar empresa + agente em 5 passos |
+| Multi-usuário por empresa | Cada empresa tem seus próprios usuários admin |
+| Auditoria completa | Log de quem alterou o quê e quando |
+| API pública com documentação | Swagger/OpenAPI para integrações externas |
+| White-label | Customizar logo, domínio e cores por empresa |
+
+---
+
+## 5. Riscos e Mitigação
+
 | Risco | Impacto | Mitigação |
-| :--- | :--- | :--- |
-| **Instabilidade do ERP** | Alto | Camada de conexão com Cache, Retries exponenciais e Fila (Dead Letter Queues). |
-| **Travamento do Usuário** | Médio | Aceitar múltiplos formatos de input ("1,3,4", "todos") e sempre numerar listas. |
-| **Autenticação Fraca** | Crítico | Código de confirmação (OTP) com expiração curta (10 min). |
-| **Handoff Confuso** | Médio | Fila específica por setor + Contexto da conversa enviado ao atendente ("Etiqueta"). |
+|-------|---------|-----------|
+| Instabilidade do ERP do cliente | Alto | Cache de resposta + retry com backoff + circuit breaker |
+| Alucinação do LLM | Alto | Prompt restritivo + temperatura baixa + validação de output |
+| Custo de tokens elevado | Médio | Limitar histórico de contexto, usar modelos flash |
+| Handoff confuso entre agentes | Médio | Passar contexto resumido ao agente de destino |
+| Dados sensíveis em logs | Alto | Mascarar CPF/CNPJ, não logar conteúdo de mensagens em produção |
+| Sessão corrompida | Baixo | TTL de sessão + fallback para nova sessão |
+
+---
+
+## 6. Princípios de Produto
+
+- **Zero código para o cliente:** toda configuração via painel web.
+- **IA-first sem menus numerados:** conversa natural com intent detection.
+- **Multi-modelo:** flexibilidade de trocar o modelo por agente (Gemini, GPT, Claude).
+- **Observabilidade desde o dia 1:** toda chamada gera execução rastreável.
+- **SaaS pronto para múltiplos clientes:** isolamento total de dados por tenant.

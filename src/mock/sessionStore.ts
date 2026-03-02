@@ -139,6 +139,6 @@ export const currentAgentStore = {
             } catch {
                 /* ignore */
             }
-        },
+        }
     },
 };

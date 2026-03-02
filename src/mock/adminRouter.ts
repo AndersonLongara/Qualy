@@ -223,6 +223,15 @@ router.patch('/tenants/:id', async (req: Request, res: Response) => {
             tools: body.tools !== undefined ? body.tools : current.tools,
             chatFlow: body.chatFlow !== undefined ? body.chatFlow : current.chatFlow,
         };
+        // [DEBUG] Log mock data save for diagnosis
+        if (Array.isArray(merged.assistants)) {
+            for (const a of merged.assistants as any[]) {
+                if (a?.api?.mode === 'mock') {
+                    const clientesKeys = a.api?.mockData?.clientes ? Object.keys(a.api.mockData.clientes) : [];
+                    console.log(`[PATCH tenant] Salvando agente "${a.id}" com mode=mock, clientes keys: [${clientesKeys.join(', ')}]`);
+                }
+            }
+        }
         await writeTenant(id, merged);
         const config = getTenantConfig(id);
         return res.json(config);
