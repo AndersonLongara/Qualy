@@ -104,13 +104,28 @@ export function messageContainsProductCode(message: string): boolean {
 }
 
 /**
- * Verifica se a mensagem menciona um produto por nome (ex.: "pedido com o produto Cimento CP-II 50kg").
+ * Verifica se a mensagem menciona um produto por nome.
  * Usado para enviar à IA em vez do fluxo que pediria "qual produto?".
+ *
+ * Cobre dois padrões:
+ *  1. Com palavra-chave "produto": "pedido com o produto Ração Royal"
+ *  2. Sem palavra-chave: "quero comprar Ração Royal" (nome junto ao verbo de compra)
+ *
+ * Nota: usa [\w\s\-\.À-ÿ] para suportar caracteres acentuados do português (ç, ã, é…).
  */
 export function messageContainsProductName(message: string): boolean {
     if (!message || typeof message !== 'string') return false;
     const t = message.trim();
-    return /\b(produto|do produto|com o produto)\s+[\w\s\-\.]{3,}/i.test(t) || /\b(cimento|argamassa|tijolo|areia|cal|bloco|ferro|telha)\b/i.test(t);
+    // Padrão 1: "produto [nome]" / "do produto [nome]" / "com o produto [nome]" — Unicode-aware
+    if (/\b(produto|do produto|com o produto)\s+[\w\s\-\.À-ÿ]{3,}/i.test(t)) return true;
+    // Padrão 2: "quero/desejo/preciso comprar/pedir/encomendar [nome com 2+ palavras ou acentos]"
+    // Exige ao menos 5 chars após o verbo para evitar falsos positivos em "quero comprar"
+    if (/\b(quero|desejo|preciso)\s+(comprar|pedir|encomendar)\s+(o\s+)?(produto\s+)?[\w\-\.À-ÿ]*[À-ÿ][\w\s\-\.À-ÿ]{2,}/i.test(t)) return true;
+    // Padrão 3: nomes de produto com espaço após verbo de compra (multi-palavra sem acento)
+    if (/\b(quero|desejo|preciso)\s+(comprar|pedir|encomendar)\s+(o\s+)?(produto\s+)?\w+\s+\w[\w\s\-\.]{2,}/i.test(t)) return true;
+    // Padrão 4: categorias de produto comuns (hardcoded)
+    if (/\b(cimento|argamassa|tijolo|areia|cal|bloco|ferro|telha|ra[çc][aã]o|tinta|produ)\b/i.test(t)) return true;
+    return false;
 }
 
 /**
