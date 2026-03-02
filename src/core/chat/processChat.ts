@@ -5,10 +5,10 @@
  */
 import axios from 'axios';
 import { getConfig, getAssistantConfig } from '../../config/tenant';
-import { detectIntent, messageContainsProductCode, messageContainsProductName } from '../ai/intent';
+import { detectIntent, detectTone, messageContainsProductCode, messageContainsProductName } from '../ai/intent';
 import { createOrderSession, processOrderFlow } from '../ai/order-flow';
 import { getAIResponse } from '../ai/provider';
-import { sessionStore, currentAgentStore } from '../../mock/sessionStore';
+import { sessionStore, currentAgentStore, sharedContextStore } from '../../mock/sessionStore';
 
 export interface HandoffInfo {
     /** ID do agente de destino para onde o cliente foi transferido. */
@@ -115,6 +115,11 @@ export async function processChatMessage(
     const requestedId = (assistantId && assistantId.trim()) ? assistantId.trim() : undefined;
     const effectiveAssistantId = (storedAgent && storedAgent.trim()) ? storedAgent.trim().toLowerCase() : (requestedId ? requestedId.toLowerCase() : undefined);
     const session = await sessionStore.get(tid, phone, effectiveAssistantId);
+
+    // P1+P2: merge shared context (cross-agent customerProfile + tone)
+    const sharedCtx = await sharedContextStore.get(tid, phone);
+    if (sharedCtx.customerProfile && !session.customerProfile) session.customerProfile = sharedCtx.customerProfile;
+    if (sharedCtx.tone && !session.tone) session.tone = sharedCtx.tone;
     let intent = detectIntent(message);
     // Garante que pedidos explícitos de transferência sempre vão para a IA (tool transferir_para_agente)
     if (intent === 'HUMAN_AGENT' && /\btransferir\b/i.test(message.trim())) {
@@ -137,6 +142,7 @@ export async function processChatMessage(
         session.history = [];
         session.order = createOrderSession();
         session.lastProduct = null;
+        // Keep customerProfile and tone across conversation resets
         await currentAgentStore.clear(tid, phone);
     }
 
@@ -153,16 +159,26 @@ export async function processChatMessage(
             session.lastProduct) {
             session.order.product = session.lastProduct;
         }
+        const priorOrderState = { ...session.order };
         const result = await processOrderFlow(message, session.order, intent, tid, effectiveAssistantId ?? undefined);
         reply = result.reply;
         session.order = result.newState;
+        // P1: capture customerProfile from any validated order state
+        const name = result.newState.customerName ?? priorOrderState.customerName;
+        const doc = result.newState.document ?? priorOrderState.document;
+        if (name && doc) session.customerProfile = { name, document: doc };
     } else if (orderFlowEnabled && (intent === 'START_ORDER' || intent === 'START_ORDER_WITH_QUANTITY')) {
         if (session.lastProduct) {
             session.order.product = session.lastProduct;
         }
+        const priorOrderState = { ...session.order };
         const result = await processOrderFlow(message, session.order, intent, tid, effectiveAssistantId ?? undefined);
         reply = result.reply;
         session.order = result.newState;
+        // P1: capture customerProfile from any validated order state
+        const name = result.newState.customerName ?? priorOrderState.customerName;
+        const doc = result.newState.document ?? priorOrderState.document;
+        if (name && doc) session.customerProfile = { name, document: doc };
     } else if (intent === 'HUMAN_AGENT') {
         const escalation = config.chatFlow?.humanEscalation;
         const legacyMsg = config.prompt.humanAgentMessage?.trim();
@@ -198,7 +214,10 @@ export async function processChatMessage(
             reply = 'Olá! Sou a Assistente, assistente virtual. Como posso ajudar hoje?';
         }
     } else {
-        const result = await getAIResponse(tid, message, session.history, effectiveAssistantId);
+        const result = await getAIResponse(tid, message, session.history, effectiveAssistantId, {
+            customerProfile: session.customerProfile ?? undefined,
+            tone: session.tone ?? undefined,
+        });
         const fallbackReply = 'Desculpe, não consegui processar sua solicitação. Pode reformular?';
         // Em transferência: nunca mostrar fallback genérico; usar mensagem de transição
         if (result.handoff?.transitionMessage?.trim()) {
@@ -211,6 +230,15 @@ export async function processChatMessage(
 
         const clean = result.messages.filter((m: any) => m.role !== 'system');
         session.history = clean.slice(-20);
+
+        // P2: Detect and update tone from recent user messages
+        const recentUserMsgs = session.history
+            .filter((m: any) => m.role === 'user')
+            .slice(-4)
+            .map((m: any) => (typeof m.content === 'string' ? m.content : ''));
+        recentUserMsgs.push(message);
+        const detectedTone = detectTone(recentUserMsgs);
+        if (detectedTone) session.tone = detectedTone;
 
         if (result.toolResults && result.toolResults.length > 0) {
             try {
@@ -263,8 +291,15 @@ export async function processChatMessage(
             // Gera primeira mensagem do agente de destino com contexto da transferência (conversa ativa)
             let initialReply: string | undefined;
             try {
-                const contextMessage = `[Transferência] O cliente foi encaminhado para você. O que o cliente disse: "${message}". A mensagem que o atendente anterior enviou ao cliente ao transferir: "${reply}". Responda com UMA única mensagem de boas-vindas e já comece a atender o cliente de forma ativa (ex.: perguntando como pode ajudar com o pedido ou o que precisa). Não repita que está transferindo; assuma que o cliente já está com você.`;
-                const newAgentResult = await getAIResponse(tid, contextMessage, [], targetId);
+                // P4: Pass recent history + shared context so target agent has full picture
+                const transferContext = session.history.slice(-6);
+                const contextMessage = `[Transferência] O cliente foi encaminhado para você.${
+                    session.customerProfile ? ` Cliente: ${session.customerProfile.name} (doc: ${session.customerProfile.document}).` : ''
+                } O cliente disse: "${message}". Responda com UMA única mensagem assumindo o contexto anterior — já comece a atender, sem anunciar transferência.`;
+                const newAgentResult = await getAIResponse(tid, contextMessage, transferContext, targetId, {
+                    customerProfile: session.customerProfile ?? undefined,
+                    tone: session.tone ?? undefined,
+                });
                 initialReply = (newAgentResult.content || '').trim() || undefined;
                 if (initialReply) {
                     const newAgentSession = await sessionStore.get(tid, phone, targetId);
@@ -322,6 +357,14 @@ export async function processChatMessage(
 
     const logPreview = reply.length > 80 ? `${reply.substring(0, 80)} (truncado no log)` : reply;
     console.log(`[CHAT] [${phone}] << "${logPreview}"`);
+
+    // P1+P2: persist shared context cross-agent
+    if (session.customerProfile || session.tone) {
+        await sharedContextStore.set(tid, phone, {
+            customerProfile: session.customerProfile,
+            tone: session.tone,
+        });
+    }
 
     await sessionStore.set?.(tid, phone, session, effectiveAssistantId);
     return { reply, debug, effectiveAssistantId: effectiveAssistantId ?? null };

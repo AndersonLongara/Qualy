@@ -6,10 +6,21 @@
 import { OrderSession, createOrderSession } from '../core/ai/order-flow';
 import { kv } from '@vercel/kv';
 
+export interface CustomerProfile {
+    /** First name + full name from validated CNPJ/CPF */
+    name: string;
+    /** CNPJ or CPF digits only */
+    document: string;
+}
+
 export interface ChatSession {
     history: any[];
     order: OrderSession;
     lastProduct: any | null;
+    /** Persisted after first CNPJ/CPF validation — shared across agents via sharedContextStore */
+    customerProfile: CustomerProfile | null;
+    /** Detected communication tone — updates after each LLM turn */
+    tone: 'formal' | 'informal' | null;
 }
 
 export interface SessionStore {
@@ -24,6 +35,8 @@ function createDefaultSession(): ChatSession {
         history: [],
         order: createOrderSession(),
         lastProduct: null,
+        customerProfile: null,
+        tone: null,
     };
 }
 
@@ -95,6 +108,29 @@ export function createRedisSessionStore(ttlSeconds: number = 60 * 60 * 24): Sess
 
 /** Store singleton usado pelo servidor. */
 export const sessionStore = isRedisConfigured() ? createRedisSessionStore() : createMemorySessionStore();
+
+// ─── Shared context (tenantId:phone) — persiste customerProfile e tone cross-agent ───
+const SHARED_CTX_PREFIX = 'ctx:';
+interface SharedContext { customerProfile?: CustomerProfile | null; tone?: 'formal' | 'informal' | null }
+const sharedCtxMemory: Record<string, SharedContext> = {};
+function sharedCtxKey(tenantId: string, phone: string) { return `${SHARED_CTX_PREFIX}${tenantId || 'default'}:${phone}`; }
+
+export const sharedContextStore = {
+    async get(tenantId: string, phone: string): Promise<SharedContext> {
+        const key = sharedCtxKey(tenantId, phone);
+        if (isRedisConfigured()) {
+            try { const v = await kv.get<SharedContext>(key); if (v) return v; } catch { /* fallback */ }
+        }
+        return sharedCtxMemory[key] ?? {};
+    },
+    async set(tenantId: string, phone: string, ctx: SharedContext): Promise<void> {
+        const key = sharedCtxKey(tenantId, phone);
+        sharedCtxMemory[key] = { ...sharedCtxMemory[key], ...ctx };
+        if (isRedisConfigured()) {
+            try { await kv.set(key, { ...sharedCtxMemory[key] }, { ex: 60 * 60 * 24 }); } catch { /* ignore */ }
+        }
+    },
+};
 
 // ─── Agente atual por (tenantId, phone): após handoff, as próximas mensagens usam esse agente
 const CURRENT_AGENT_KEY_PREFIX = 'current_agent:';

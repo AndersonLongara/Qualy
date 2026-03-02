@@ -163,8 +163,19 @@ function getEffectiveTools(
     return { definitions: base, executionMap };
 }
 
+/** Optional session context injected into the system prompt at runtime */
+export interface SessionContext {
+    customerProfile?: { name: string; document: string };
+    tone?: 'formal' | 'informal';
+}
+
 /** System prompt a partir de ResolvedAssistant (path ou texto); fallback para tenant prompt ou default. */
-function getSystemPromptFromAssistant(assistant: ResolvedAssistant, tenantConfig: ReturnType<typeof getConfig>, cwd: string): string {
+function getSystemPromptFromAssistant(
+    assistant: ResolvedAssistant,
+    tenantConfig: ReturnType<typeof getConfig>,
+    cwd: string,
+    ctx?: SessionContext
+): string {
     let content = '';
     if (assistant.systemPromptPath && assistant.systemPromptPath.trim()) {
         try {
@@ -245,7 +256,7 @@ Regras de formatação:
 - O CNPJ/CPF é pedido UMA VEZ, apenas ao finalizar, não a cada produto.`;
     }
 
-    // Agentes com roteamento ativo: não pedir CPF/CNPJ para pedido — transferir para o agente correto
+    //  Agentes com roteamento ativo: não pedir CPF/CNPJ para pedido — transferir para o agente correto
     if (assistant.handoffRules?.enabled && assistant.handoffRules.routes?.length) {
         const routes = assistant.handoffRules.routes;
         const availableTargets = routes.map(r => `**${r.label || r.agentId}**`).join(', ');
@@ -260,20 +271,71 @@ Destinos disponíveis configurados para você: ${availableTargets}.
 Quando o cliente demonstrar intenção relacionada a assuntos que não são de sua especialidade ou que deixam claro que ele precisa de um dos destinos acima:
 - **Reconheça só a intenção** e **ofereça a transferência** para o respectivo setor. NÃO faça perguntas aprofundadas sobre o assunto do destino (ex.: se for para vendas, não pergunte qual produto; se for para financeiro, não peça dados de boleto). Sua única ação é indicar que vai transferir e perguntar se pode transferir.
 - **NÃO** peça CPF/CNPJ nem execute consultas a não ser que seja exclusivamente do seu próprio escopo.
-- **Primeiro** mensagem curta: informe que vai encaminhar para o setor correto (cite o nome do setor, ex.: "Vou te transferir para o setor Financeiro para te ajudar com isso. Pode ser?"). **NÃO chame a ferramenta de transferência nesta mensagem** — apenas aguarde a confirmação do cliente.
+- **Primeiro** mensagem curta: informe que vai conectar o cliente ao especialista certo — use linguagem natural e discreta (ex.: "Deixa eu te conectar com quem pode ajudar melhor nisso, ok?" ou "Vou te passar pro setor certo, um segundinho!"). **NÃO chame a ferramenta de transferência nesta mensagem** — apenas aguarde a confirmação do cliente.
 - **Só depois** que o cliente **confirmar** (sim, pode, ok, claro, pode ser, etc.) você **DEVE** chamar a ferramenta **transferir_para_agente**. O agente de destino é quem fará as perguntas específicas.
 - Se a última mensagem que você enviou foi pedir confirmação e o cliente respondeu **apenas** "sim", "pode", "ok" ou "claro", **chame imediatamente** a ferramenta **transferir_para_agente** com o ID correto do agente oferecido — não responda só com texto.
+- **Mensagem de transição:** Ao chamar a tool, gere em \`mensagem_transicao\` uma frase curta e natural — **não mencione "transferência", "setor" ou "encaminhamento"** explicitamente. Ex.: "Perfeito! Já deixo você com a pessoa certa. 👋"
 - **Não repita saudação:** Se já existe conversa anterior, NÃO diga "Olá" ou "Bom dia" de novo. Vá direto ao ponto.`;
     }
+
+    // ── Context blocks: customer profile, tone, proactivity ──
+    if (ctx?.customerProfile) {
+        const firstName = ctx.customerProfile.name.split(' ')[0];
+        fullPrompt += `
+
+---
+# CONTEXTO DO CLIENTE ATUAL
+- **Nome completo:** ${ctx.customerProfile.name} (doc: ${ctx.customerProfile.document})
+- **Primeiro nome:** ${firstName}
+- Use o primeiro nome (**${firstName}**) naturalmente em 1-2 momentos da conversa (cumprimento e/ou confirmação). Não repita demais.
+- Se o cliente perguntar seu nome anterior ou histórico, pode perguntar: "Quer ver seus pedidos anteriores?" e chamar a ferramenta \`consultar_pedidos\` com o documento acima.`;
+    }
+    if (ctx?.tone === 'informal') {
+        fullPrompt += `
+
+---
+# TOM DE COMUNICAÇÃO: INFORMAL
+O cliente escreve de forma INFORMAL. Adapte-se:
+- Tuteia ("você" pode ser abreviado, use "tudo bem?", "pode ser!")
+- Seja mais descontraído, mas ainda profissional
+- Evite formalidades excessivas como "prezado" ou "solicito"
+- Respostas mais curtas e diretas`;
+    } else if (ctx?.tone === 'formal') {
+        fullPrompt += `
+
+---
+# TOM DE COMUNICAÇÃO: FORMAL
+O cliente escreve de forma FORMAL. Mantenha:
+- Tratamento em "você" com respeito
+- Frases completas com pontuação adequada
+- Evite gírias, contrações ou abreviações
+- Seja preciso e profissional`;
+    }
+    if (isVendedor) {
+        fullPrompt += `
+
+---
+# PROATIVIDADE (quando aplicável)
+- Se um produto tiver o campo \`_alerta\` no resultado do estoque, mencione o aviso diretamente ao cliente (ex.: "⚠️ últimas 3 unidades — corre!").
+- Se \`consultar_pedidos\` retornar histórico do cliente, mencione: "Da última vez você levou [produto], quer adicionar de novo?"
+- Nunca invente histórico — só mencione se a ferramenta retornar dados reais.`;
+    }
+
     return fullPrompt;
 }
 
-export const getAIResponse = async (tenantId: string, userMessage: string, history: Array<any> = [], assistantId?: string | null) => {
+export const getAIResponse = async (
+    tenantId: string,
+    userMessage: string,
+    history: Array<any> = [],
+    assistantId?: string | null,
+    ctx?: SessionContext
+) => {
     const tid = tenantId?.trim() || 'default';
     const config = getConfig(tid);
     const assistant = getAssistantConfig(tid, assistantId);
     const cwd = process.cwd();
-    const systemPrompt = getSystemPromptFromAssistant(assistant, config, cwd);
+    const systemPrompt = getSystemPromptFromAssistant(assistant, config, cwd, ctx);
     const openai = createOpenAIClient(tid, assistant.name);
     const model = (assistant.model && assistant.model.trim()) || OPENROUTER_MODEL;
 

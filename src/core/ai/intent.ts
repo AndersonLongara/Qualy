@@ -141,6 +141,40 @@ export const parseQuantityFromOrderMessage = (message: string): number | null =>
 };
 
 /**
+ * Detects communication tone from the last few user messages.
+ * Returns 'informal' | 'formal' | null (null = insufficient data, < 2 user messages).
+ *
+ * Informal markers: "vc", "tb", "pq", "rs", "kk", "oi", no punctuation, all lowercase, abbreviations.
+ * Formal markers: "por favor", "poderia", "gostaria", complete sentences, proper punctuation.
+ */
+export function detectTone(userMessages: string[]): 'formal' | 'informal' | null {
+    const msgs = userMessages.filter((m) => m && m.trim().length > 1);
+    if (msgs.length < 2) return null;
+
+    let informal = 0;
+    let formal = 0;
+
+    for (const m of msgs) {
+        const t = m.trim();
+        // Informal markers
+        if (/\b(vc|tb|pq|blz|slc|tmj|kk+|rsrs|haha|tô|tá|ta bom|oxe|véi|cara|mano)\b/i.test(t)) informal += 2;
+        if (/\b(oi|oii|oiii|opa|eae|eai)\b/i.test(t)) informal += 1;
+        if (!/[.!?]$/.test(t) && t.length > 10) informal += 1; // no terminal punctuation
+        if (t === t.toLowerCase() && t.length > 8) informal += 1; // all lowercase
+        if (/\d+\s*(unid|un\b|pc\b|pç\b)/.test(t)) informal += 1; // abbreviated units
+
+        // Formal markers
+        if (/\b(por favor|poderia|gostaria|agradeço|prezado|assim que possível|solicito|venho por meio)\b/i.test(t)) formal += 2;
+        if (/\b(você|senhor|senhora|obrigado|obrigada|por gentileza|gentilmente)\b/i.test(t)) formal += 1;
+        if (/[.!?]$/.test(t) && t.length > 15) formal += 1; // proper ending
+        if (/^[A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ]/.test(t)) formal += 1; // starts with uppercase
+    }
+
+    if (Math.abs(informal - formal) < 2) return null; // tie → not enough signal
+    return informal > formal ? 'informal' : 'formal';
+}
+
+/**
  * Detects the intent of a user message.
  * Returns the first matching intent or 'UNKNOWN'.
  */

@@ -398,6 +398,9 @@ export const toolsExecution: Record<string, (a: string | Record<string, unknown>
                 estoque_status: p.estoque_disponivel > 0 ? 'Disponível' : 'Sem estoque',
                 preco_unitario: p.preco_tabela,
                 preco_promocional: p.preco_promocional ?? null,
+                ...(p.estoque_disponivel > 0 && p.estoque_disponivel <= 5
+                    ? { _alerta: `⚠️ Últimas ${p.estoque_disponivel} unidades em estoque!` }
+                    : {}),
             })));
         }
 
@@ -417,6 +420,9 @@ export const toolsExecution: Record<string, (a: string | Record<string, unknown>
                 estoque_status: p.estoque_disponivel > 0 ? 'Disponível' : 'Sem estoque',
                 preco_unitario: p.preco_tabela,
                 preco_promocional: p.preco_promocional ?? null,
+                ...(p.estoque_disponivel > 0 && p.estoque_disponivel <= 5
+                    ? { _alerta: `⚠️ Últimas ${p.estoque_disponivel} unidades em estoque!` }
+                    : {}),
             }));
             console.log(`[TOOL] consultar_estoque resultado:`, JSON.stringify(formatted));
             return JSON.stringify(formatted);

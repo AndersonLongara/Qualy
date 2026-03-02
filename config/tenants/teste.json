@@ -37,6 +37,22 @@
               "razao_social": "Empresa LTDA",
               "status": "ativo"
             }
+          },
+          "pedidos": {
+            "10293847000155": [
+              {
+                "pedido": "PED-0042",
+                "data": "2026-02-15",
+                "valor_total": 579.80,
+                "status": "faturado",
+                "nfe_numero": "NF-2026-0042",
+                "danfe_url": null,
+                "rastreio": null,
+                "items": [
+                  { "nome": "Ração Royal Canin HT Large Dog", "quantidade": 2, "preco_unitario": 289.90 }
+                ]
+              }
+            ]
           }
         }
       },
