@@ -144,18 +144,24 @@ const EXAMPLE_DATA: Record<MockSection, unknown> = {
     titulos: {
         '12345678000195': [
             {
+                id_titulo: 'TIT-0042',
                 numero_nota: 'NF-0042',
                 valor_atualizado: 1850.0,
                 vencimento: '2025-03-15',
                 status: 'a_vencer',
+                link_boleto: 'https://exemplo.com/boleto1.pdf',
                 pdf_url: 'https://exemplo.com/boleto1.pdf',
                 linha_digitavel: '10499.12345 56789.012345 67890.123456 1 12340000185000',
             },
             {
+                id_titulo: 'TIT-0038',
                 numero_nota: 'NF-0038',
                 valor_atualizado: 430.5,
                 vencimento: '2025-01-20',
                 status: 'vencido',
+                link_boleto: null,
+                pdf_url: null,
+                linha_digitavel: null,
             },
         ],
     },
