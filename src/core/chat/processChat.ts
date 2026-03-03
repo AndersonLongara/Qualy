@@ -94,6 +94,24 @@ function userMessageIsConfirmation(message: string): boolean {
 }
 
 /**
+ * Tenta encontrar o produto mencionado na mensagem dentro da lista de produtos recentes.
+ * Usa correspondência por palavras-chave (ignora stop-words curtas e acento).
+ */
+function findProductByMention(message: string, products: any[]): any | null {
+    if (!products || products.length === 0) return null;
+    const normalize = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const msgNorm = normalize(message);
+    let best: any = null;
+    let bestScore = 0;
+    for (const p of products) {
+        const words = normalize(p.nome || '').split(/\s+/).filter((w: string) => w.length > 3);
+        const score = words.filter((w: string) => msgNorm.includes(w)).length;
+        if (score > bestScore) { bestScore = score; best = p; }
+    }
+    return bestScore >= 1 ? best : null;
+}
+
+/**
  * Processa uma mensagem do usuário e retorna a resposta do assistente.
  * Atualiza a sessão no store (histórico, order state, lastProduct). Sessão isolada por tenant e por assistente (tenantId:assistantId:phone).
  *
@@ -129,8 +147,11 @@ export async function processChatMessage(
     const assistant = getAssistantConfig(tid, effectiveAssistantId);
     const orderFlowEnabled = config.features?.orderFlowEnabled === true;
     // Se o agente tem roteamento ativo (ex.: Atendente → Vendedor), pedidos de compra devem ir para a IA para ela transferir, não para o fluxo de pedido global
+    // Exceção: se o próprio agente tem ferramentas de vendas (consultar_estoque / pedido_post), ele É o agente de vendas e deve processar os pedidos normalmente.
+    const agentToolIds = assistant.toolIds ?? [];
+    const agentHasSalesTools = agentToolIds.some((t: string) => ['consultar_estoque', 'pedido_post'].includes(t));
     const hasHandoffRoutes = !!(assistant.handoffRules?.enabled && assistant.handoffRules.routes?.length);
-    if (hasHandoffRoutes && (intent === 'START_ORDER' || intent === 'START_ORDER_WITH_QUANTITY')) {
+    if (hasHandoffRoutes && !agentHasSalesTools && (intent === 'START_ORDER' || intent === 'START_ORDER_WITH_QUANTITY')) {
         intent = 'UNKNOWN';
     }
     // Se a mensagem já traz código ou nome de produto (ex.: "CIM-001" ou "produto Cimento CP-II 50kg"), manda para a IA para ela consultar estoque em vez do fluxo que pediria "qual produto?"
@@ -142,6 +163,7 @@ export async function processChatMessage(
         session.history = [];
         session.order = createOrderSession();
         session.lastProduct = null;
+        session.lastProducts = [];
         // Keep customerProfile and tone across conversation resets
         await currentAgentStore.clear(tid, phone);
     }
@@ -155,9 +177,10 @@ export async function processChatMessage(
     if (orderFlowEnabled && session.order.state !== 'idle' && intent !== 'STOCK_QUERY') {
         // When adding more items to cart, sync the newly-found product into the order session
         if (session.order.state === 'awaiting_more_or_checkout' &&
-            (intent === 'START_ORDER' || intent === 'START_ORDER_WITH_QUANTITY') &&
-            session.lastProduct) {
-            session.order.product = session.lastProduct;
+            (intent === 'START_ORDER' || intent === 'START_ORDER_WITH_QUANTITY')) {
+            const matched = findProductByMention(message, session.lastProducts);
+            session.order.product = matched ?? session.lastProduct ?? null;
+            if (matched) console.log(`[CHAT] Produto encontrado por nome: ${matched.nome}`);
         }
         const priorOrderState = { ...session.order };
         const result = await processOrderFlow(message, session.order, intent, tid, effectiveAssistantId ?? undefined);
@@ -168,9 +191,10 @@ export async function processChatMessage(
         const doc = result.newState.document ?? priorOrderState.document;
         if (name && doc) session.customerProfile = { name, document: doc };
     } else if (orderFlowEnabled && (intent === 'START_ORDER' || intent === 'START_ORDER_WITH_QUANTITY')) {
-        if (session.lastProduct) {
-            session.order.product = session.lastProduct;
-        }
+        const matched = findProductByMention(message, session.lastProducts);
+        session.order.product = matched ?? session.lastProduct ?? null;
+        if (matched) console.log(`[CHAT] Produto encontrado por nome: ${matched.nome}`);
+        else if (session.lastProduct) console.log(`[CHAT] Usando lastProduct fallback: ${session.lastProduct.nome}`);
         const priorOrderState = { ...session.order };
         const result = await processOrderFlow(message, session.order, intent, tid, effectiveAssistantId ?? undefined);
         reply = result.reply;
@@ -245,8 +269,9 @@ export async function processChatMessage(
                 const lastToolContent = result.toolResults[result.toolResults.length - 1].content;
                 const products = JSON.parse(lastToolContent);
                 if (Array.isArray(products) && products.length > 0) {
+                    session.lastProducts = products;
                     session.lastProduct = products[0];
-                    console.log(`[CHAT] Produto salvo para order flow: ${products[0].nome}`);
+                    console.log(`[CHAT] ${products.length} produto(s) salvos para order flow. Primeiro: ${products[0].nome}`);
                 }
             } catch {
                 /* ignore */

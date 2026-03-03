@@ -17,6 +17,8 @@ export interface ChatSession {
     history: any[];
     order: OrderSession;
     lastProduct: any | null;
+    /** All products from the most recent consultar_estoque call, used for name-based matching */
+    lastProducts: any[];
     /** Persisted after first CNPJ/CPF validation — shared across agents via sharedContextStore */
     customerProfile: CustomerProfile | null;
     /** Detected communication tone — updates after each LLM turn */
@@ -35,6 +37,7 @@ function createDefaultSession(): ChatSession {
         history: [],
         order: createOrderSession(),
         lastProduct: null,
+        lastProducts: [],
         customerProfile: null,
         tone: null,
     };
