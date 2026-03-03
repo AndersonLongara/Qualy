@@ -116,6 +116,8 @@ function getEffectiveTools(
     const executionMap: Record<string, (args: Record<string, unknown>) => Promise<string>> = {};
 
     const humanEscalationEnabled = tenantConfig.chatFlow?.humanEscalation?.enabled === true;
+    const hasHandoffRoutes = assistant.handoffRules?.enabled === true && (assistant.handoffRules.routes?.length ?? 0) > 0;
+    const hasExplicitToolIds = Array.isArray(assistant.toolIds) && assistant.toolIds.length > 0;
 
     if (assistant.toolIds && assistant.toolIds.length > 0) {
         const builtins = getBuiltinToolsConfig();
@@ -133,6 +135,20 @@ function getEffectiveTools(
             executionMap['transferir_para_agente'] = (args) =>
                 toolsExecution['transferir_para_agente'](tenantId, assistantId, args);
         }
+        if (humanEscalationEnabled) {
+            definitions.push(buildHumanEscalationToolDefinition());
+            executionMap['solicitar_atendente_humano'] = (args) =>
+                toolsExecution['solicitar_atendente_humano'](tenantId, assistantId, args);
+        }
+        return { definitions, executionMap };
+    }
+
+    // Agente de triagem com handoff ativo e sem toolIds explícitos:
+    // expõe apenas ferramentas de roteamento, evitando que ele execute fluxo financeiro/pedidos.
+    if (hasHandoffRoutes && !hasExplicitToolIds) {
+        const definitions: ToolDefinition[] = [buildHandoffToolDefinition(assistant.handoffRules!.routes)];
+        executionMap['transferir_para_agente'] = (args) =>
+            toolsExecution['transferir_para_agente'](tenantId, assistantId, args);
         if (humanEscalationEnabled) {
             definitions.push(buildHumanEscalationToolDefinition());
             executionMap['solicitar_atendente_humano'] = (args) =>
@@ -195,6 +211,7 @@ function getSystemPromptFromAssistant(
     }
     const companyName = tenantConfig.branding?.companyName || 'a empresa';
     const assistantName = assistant.name || 'Assistente';
+    const hasHandoffRoutes = assistant.handoffRules?.enabled === true && (assistant.handoffRules.routes?.length ?? 0) > 0;
     const isVendedor = assistant.id === 'vendedor' || (assistant.features?.orderFlowEnabled && !assistant.handoffRules?.enabled);
     const strictPrefix = `# IDENTIDADE E REGRAS OBRIGATÓRIAS
 Você é ${assistantName}, assistente da ${companyName}. Siga estritamente as instruções e o tom definidos abaixo. Não invente informações que não estejam nas instruções.
@@ -327,10 +344,11 @@ O cliente escreve de forma FORMAL. Mantenha:
     // Agentes financeiros: injeta fluxo de títulos/boletos
     const agentToolIds: string[] = assistant.toolIds ?? [];
     const hasToolIds = agentToolIds.length > 0;
+    const isRoutingOnlyAgent = hasHandoffRoutes && !hasToolIds;
     const tenantFeatures = tenantConfig.features ?? {};
     const isFinanceiro = hasToolIds
         ? agentToolIds.some((t: string) => ['consultar_titulos', 'solicitar_segunda_via'].includes(t))
-        : ((tenantFeatures as any).financialEnabled && !isVendedor);
+        : ((tenantFeatures as any).financialEnabled && !isVendedor && !isRoutingOnlyAgent);
     if (isFinanceiro) {
         fullPrompt += `
 
@@ -353,7 +371,7 @@ Quando o cliente mencionar boletos, débitos, títulos, vencimentos, situação 
     }
 
     // Agentes de consulta de pedidos (não-vendedor com consultar_pedidos)
-    const hasPedidoQuery = (hasToolIds ? agentToolIds.includes('consultar_pedidos') : (tenantFeatures as any).financialEnabled) && !isVendedor;
+    const hasPedidoQuery = (hasToolIds ? agentToolIds.includes('consultar_pedidos') : ((tenantFeatures as any).financialEnabled && !isRoutingOnlyAgent)) && !isVendedor;
     if (hasPedidoQuery) {
         fullPrompt += `
 
