@@ -6,6 +6,7 @@ import OpenAI from 'openai';
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'google/gemini-2.5-flash-lite';
+const OPENROUTER_FALLBACK_MODELS = ['google/gemini-2.5-flash-lite', 'google/gemini-2.0-flash-exp:free'];
 
 export type MockSection = 'clientes' | 'titulos' | 'pedidos' | 'estoque';
 
@@ -311,15 +312,41 @@ Retorne APENAS o JSON, sem texto adicional.`;
         },
     });
 
-    const completion = await openai.chat.completions.create({
-        model: OPENROUTER_MODEL,
-        messages: [
+    const tried = new Set<string>();
+    const modelsToTry = [OPENROUTER_MODEL, ...OPENROUTER_FALLBACK_MODELS].filter((m) => {
+      const key = String(m || '').trim();
+      if (!key || tried.has(key)) return false;
+      tried.add(key);
+      return true;
+    });
+
+    let completion: Awaited<ReturnType<typeof openai.chat.completions.create>> | null = null;
+    let lastError: any = null;
+    for (const model of modelsToTry) {
+      try {
+        completion = await openai.chat.completions.create({
+          model,
+          messages: [
             { role: 'system', content: SYSTEM_INSTRUCTION },
             { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.7,
-        max_tokens: 2048,
-    });
+          ],
+          temperature: 0.7,
+          max_tokens: 2048,
+        });
+        break;
+      } catch (err: any) {
+        lastError = err;
+        const status = err?.status ?? err?.response?.status;
+        const message = String(err?.message ?? '').toLowerCase();
+        const invalidModel = status === 400 && (message.includes('valid model id') || message.includes('unknown model') || message.includes('model'));
+        if (!invalidModel) throw err;
+        console.warn(`[mock-generator] Modelo OpenRouter inválido/inativo: ${model}. Tentando fallback...`);
+      }
+    }
+
+    if (!completion) {
+      throw new Error(lastError?.message || 'Falha ao gerar mock com os modelos configurados.');
+    }
 
     const raw = completion.choices[0]?.message?.content?.trim() ?? '';
     if (!raw) throw new Error('IA não retornou dados.');
