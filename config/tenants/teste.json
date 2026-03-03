@@ -53,6 +53,28 @@
                 ]
               }
             ]
+          },
+          "titulos": {
+            "10293847000155": [
+              {
+                "id": "TIT-2026-001",
+                "numero_nota": "TIT-2026-001",
+                "valor_atualizado": 1250.00,
+                "vencimento": "2026-02-10",
+                "status": "vencido",
+                "pdf_url": null,
+                "linha_digitavel": null
+              },
+              {
+                "id": "TIT-2026-002",
+                "numero_nota": "TIT-2026-002",
+                "valor_atualizado": 3480.50,
+                "vencimento": "2026-03-15",
+                "status": "a_vencer",
+                "pdf_url": "https://example.com/boleto-TIT-2026-002.pdf",
+                "linha_digitavel": "23793.38128 60033.045209 76000.063300 1 894500000348050"
+              }
+            ]
           }
         }
       },

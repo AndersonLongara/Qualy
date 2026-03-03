@@ -84,7 +84,7 @@ export function getSystemPrompt(config: ReturnType<typeof getConfig>): string {
 }
 
 /** Ferramentas que exigem CPF/CNPJ ou operações financeiras. Só são passadas à IA quando features.financialEnabled é true. */
-const FINANCIAL_TOOL_NAMES = new Set(['consultar_cliente', 'consultar_titulos', 'consultar_pedidos']);
+const FINANCIAL_TOOL_NAMES = new Set(['consultar_cliente', 'consultar_titulos', 'solicitar_segunda_via', 'consultar_pedidos']);
 /** Ferramenta de estoque/pedido. Só é passada quando features.orderFlowEnabled é true. */
 const ORDER_TOOL_NAMES = new Set(['consultar_estoque']);
 
@@ -322,6 +322,50 @@ O cliente escreve de forma FORMAL. Mantenha:
 - Se um produto tiver o campo \`_alerta\` no resultado do estoque, mencione o aviso diretamente ao cliente (ex.: "⚠️ últimas 3 unidades — corre!").
 - Se \`consultar_pedidos\` retornar histórico do cliente, mencione: "Da última vez você levou [produto], quer adicionar de novo?"
 - Nunca invente histórico — só mencione se a ferramenta retornar dados reais.`;
+    }
+
+    // Agentes financeiros: injeta fluxo de títulos/boletos
+    const agentToolIds: string[] = assistant.toolIds ?? [];
+    const hasToolIds = agentToolIds.length > 0;
+    const tenantFeatures = tenantConfig.features ?? {};
+    const isFinanceiro = hasToolIds
+        ? agentToolIds.some((t: string) => ['consultar_titulos', 'solicitar_segunda_via'].includes(t))
+        : ((tenantFeatures as any).financialEnabled && !isVendedor);
+    if (isFinanceiro) {
+        fullPrompt += `
+
+---
+# FLUXO FINANCEIRO (OBRIGATÓRIO)
+## Títulos e Boletos
+Quando o cliente mencionar boletos, débitos, títulos, vencimentos, situação financeira ou 2ª via:
+1. Solicite o CPF ou CNPJ se ainda não tiver.
+2. Chame **consultar_titulos** para listar os títulos.
+3. Exiba cada título: número, valor, vencimento, status (VENCIDO/A VENCER), link boleto.
+4. Se link_boleto existir: apresente como link clicável + linha_digitavel.
+5. Se cliente pedir 2ª via:
+   - Se link_boleto existir: envie diretamente.
+   - Se link_boleto = null: chame **solicitar_segunda_via** com id e documento.
+   - Após: apresente o link e a linha_digitavel gerados.
+## Regras Críticas
+- NUNCA invente valores, datas ou códigos de barras.
+- NUNCA confirme pagamento — apenas forneça os dados.
+- Sempre confirme o documento do cliente antes de consultar.`;
+    }
+
+    // Agentes de consulta de pedidos (não-vendedor com consultar_pedidos)
+    const hasPedidoQuery = (hasToolIds ? agentToolIds.includes('consultar_pedidos') : (tenantFeatures as any).financialEnabled) && !isVendedor;
+    if (hasPedidoQuery) {
+        fullPrompt += `
+
+---
+# CONSULTA DE PEDIDOS (SOMENTE LEITURA)
+Quando o cliente perguntar sobre pedidos, entregas, notas fiscais ou rastreio:
+1. Solicite CPF ou CNPJ se ainda não tiver.
+2. Chame **consultar_pedidos** para listar os pedidos.
+3. Exiba: número, data, valor total, status.
+4. Se NF-e: informe número e link DANFE (se disponível).
+5. Se rastreio: informe transportadora, código e status.
+6. Você é um canal de consulta — não altere, cancele ou confirme pedidos.`;
     }
 
     return fullPrompt;

@@ -103,6 +103,27 @@ export const toolsDefinition = [
     {
         type: 'function',
         function: {
+            name: 'solicitar_segunda_via',
+            description: 'Solicita a emissão de 2ª via de um boleto vencido ou extraviado. Use quando o cliente pedir a geração de um novo boleto para um título existente. Sempre informe o id do título (campo nota/id retornado por consultar_titulos) e o documento do cliente.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    id_titulo: {
+                        type: 'string',
+                        description: 'ID ou número do título obtido em consultar_titulos (campo nota ou id).',
+                    },
+                    documento: {
+                        type: 'string',
+                        description: 'CPF ou CNPJ do cliente.',
+                    },
+                },
+                required: ['id_titulo', 'documento'],
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
             name: 'consultar_pedidos',
             description: 'Consulta o histórico de pedidos de um cliente, incluindo status de rastreio e links de NF-e/DANFE. Use quando o cliente perguntar sobre entregas, notas fiscais ou pedidos.',
             parameters: {
@@ -114,7 +135,7 @@ export const toolsDefinition = [
                     },
                     status: {
                         type: 'string',
-                        enum: ['faturado', 'em_transito', 'aguardando_faturamento'],
+                        enum: ['pendente', 'aguardando_faturamento', 'faturado', 'em_transito', 'entregue', 'cancelado'],
                         description: 'Filtrar por status do pedido. Omitir para retornar todos.',
                     },
                 },
@@ -142,7 +163,7 @@ export const toolsDefinition = [
 ];
 
 /** Lista de tools built-in (para listagem no admin e seeds). */
-export const BUILTIN_TOOL_KEYS = ['consultar_cliente', 'consultar_titulos', 'consultar_pedidos', 'consultar_estoque'] as const;
+export const BUILTIN_TOOL_KEYS = ['consultar_cliente', 'consultar_titulos', 'solicitar_segunda_via', 'consultar_pedidos', 'consultar_estoque'] as const;
 
 /**
  * Gera a definição da tool de escalação para atendente humano.
@@ -299,6 +320,44 @@ export const toolsExecution: Record<string, (a: string | Record<string, unknown>
             })));
         } catch {
             return 'Erro ao consultar títulos financeiros.';
+        }
+    },
+
+    solicitar_segunda_via: async (tenantIdOrArgs: string | Record<string, unknown>, assistantIdOrArgs?: string | Record<string, unknown> | null, args?: Record<string, unknown>) => {
+        const [tid, aid, a] = typeof tenantIdOrArgs === 'string'
+            ? [tenantIdOrArgs, typeof assistantIdOrArgs === 'string' ? assistantIdOrArgs : null, typeof assistantIdOrArgs === 'object' && assistantIdOrArgs !== null ? assistantIdOrArgs as Record<string, unknown> : (args ?? {})]
+            : ['default', null, tenantIdOrArgs];
+        const idTitulo = a && typeof a === 'object' && 'id_titulo' in a ? String(a.id_titulo) : '';
+        const documento = a && typeof a === 'object' && 'documento' in a ? String(a.documento) : '';
+        const digitsOnly = documento.replace(/\D/g, '');
+
+        const mock = getMockData(tid, aid, 'titulos');
+        if (mock !== null) {
+            const titulos = mock as Record<string, any[]>;
+            let found: any = null;
+            for (const list of Object.values(titulos)) {
+                const item = list.find((t: any) => String(t.numero_nota ?? t.id ?? '') === idTitulo);
+                if (item) { found = item; break; }
+            }
+            const link = `https://boleto.mock/${idTitulo}-${digitsOnly}.pdf`;
+            const digitavel = found?.linha_digitavel || '23793.38000 00000.000000 00000.000000 0 000000000000000';
+            const validade = new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0];
+            return JSON.stringify({ id: idTitulo, link_boleto: link, linha_digitavel: digitavel, validade, mensagem: '2\u00aa via gerada com sucesso.' });
+        }
+
+        try {
+            const base = getApiBaseUrl(tid, aid);
+            const response = await axios.post(`${base}/v1/financeiro/titulos/${encodeURIComponent(idTitulo)}/segunda-via`, { documento });
+            const d = response.data;
+            return JSON.stringify({
+                id: idTitulo,
+                link_boleto: d.boleto_url || d.link_boleto || null,
+                linha_digitavel: d.linha_digitavel || null,
+                validade: d.validade || null,
+                mensagem: d.message || '2\u00aa via gerada com sucesso.',
+            });
+        } catch {
+            return 'Erro ao solicitar 2\u00aa via do boleto. Tente novamente.';
         }
     },
 

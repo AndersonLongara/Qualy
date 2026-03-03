@@ -296,6 +296,28 @@ export default function AdminTenantDetailPage({ basePath = '/admin' }: Props) {
                         />
                     </div>
                 </div>
+                {/* Features */}
+                <div className="space-y-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] p-4">
+                    <h3 className="text-sm font-semibold text-[#111b21] dark:text-[#e9edef]">Funcionalidades</h3>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={form.features.orderFlowEnabled}
+                            onChange={(e) => setForm((f) => ({ ...f, features: { ...f.features, orderFlowEnabled: e.target.checked } }))}
+                            className="accent-[#00a884]"
+                        />
+                        <span className="text-sm text-[#111b21] dark:text-[#e9edef]">Habilitar fluxo de pedidos (<code>orderFlowEnabled</code>)</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={form.features.financialEnabled}
+                            onChange={(e) => setForm((f) => ({ ...f, features: { ...f.features, financialEnabled: e.target.checked } }))}
+                            className="accent-[#00a884]"
+                        />
+                        <span className="text-sm text-[#111b21] dark:text-[#e9edef]">Habilitar módulo financeiro (<code>financialEnabled</code>)</span>
+                    </label>
+                </div>
                 {!isNew && (
                     <div className="space-y-3 rounded-lg border border-[#e9edef] dark:border-[#2a3942] p-4">
                         <h3 className="text-sm font-semibold text-[#111b21] dark:text-[#e9edef]">Mensagens do fluxo de pedido (opcional)</h3>
