@@ -5,7 +5,7 @@
  */
 import axios from 'axios';
 import { getConfig, getAssistantConfig } from '../../config/tenant';
-import { detectIntent, detectTone, messageContainsProductCode, messageContainsProductName } from '../ai/intent';
+import { detectIntent, detectTone, messageContainsProductCode, messageContainsProductName, parseQuantityFromOrderMessage } from '../ai/intent';
 import { createOrderSession, processOrderFlow } from '../ai/order-flow';
 import { getAIResponse } from '../ai/provider';
 import { sessionStore, currentAgentStore, sharedContextStore } from '../../mock/sessionStore';
@@ -174,6 +174,22 @@ export async function processChatMessage(
     let debug: any = null;
     let handledByLLM = false;
 
+    // Recovery: CNPJ/CPF sent while LLM was handling conversation (state=idle, product pending)
+    // Build 1-item cart from lastProduct + qty found in recent history, then route through state machine
+    if (orderFlowEnabled && intent === 'PROVIDE_DOCUMENT' && session.order.state === 'idle' && session.lastProduct) {
+        let qty = 1;
+        const recentUserMsgs = session.history.slice(-6).filter((h: any) => h.role === 'user').map((h: any) => h.content || '');
+        for (const m of recentUserMsgs) {
+            const q = parseQuantityFromOrderMessage(m);
+            if (q) { qty = q; break; }
+        }
+        const preco = session.lastProduct.preco_promocional || session.lastProduct.preco_unitario;
+        session.order.product = session.lastProduct;
+        session.order.items = [{ sku: session.lastProduct.sku, nome: session.lastProduct.nome, quantidade: qty, preco_unitario: preco }];
+        session.order.state = 'awaiting_cpf';
+        console.log(`[CHAT] Recovery PROVIDE_DOCUMENT: montando carrinho com ${session.lastProduct.nome} x${qty} antes de validar cliente`);
+    }
+
     if (orderFlowEnabled && session.order.state !== 'idle' && intent !== 'STOCK_QUERY') {
         // When adding more items to cart, sync the newly-found product into the order session
         if (session.order.state === 'awaiting_more_or_checkout' &&
@@ -190,7 +206,8 @@ export async function processChatMessage(
         const name = result.newState.customerName ?? priorOrderState.customerName;
         const doc = result.newState.document ?? priorOrderState.document;
         if (name && doc) session.customerProfile = { name, document: doc };
-    } else if (orderFlowEnabled && (intent === 'START_ORDER' || intent === 'START_ORDER_WITH_QUANTITY')) {
+    } else if (orderFlowEnabled && (intent === 'START_ORDER' || intent === 'START_ORDER_WITH_QUANTITY'
+        || (intent === 'PROVIDE_QUANTITY' && session.lastProduct != null))) {
         const matched = findProductByMention(message, session.lastProducts);
         session.order.product = matched ?? session.lastProduct ?? null;
         if (matched) console.log(`[CHAT] Produto encontrado por nome: ${matched.nome}`);
